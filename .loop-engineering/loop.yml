@@ -1,0 +1,39 @@
+objective: "Harden ReaderSignal into a production-ready, universally useful Kujo-native production Kujo tool without weakening its authority boundaries."
+checklist_file: ""
+max_iterations: 1
+max_no_progress: 1
+max_consecutive_failures: 1
+
+allowed_actions:
+  - read_files
+  - edit_files
+  - run_tests
+  - commit_local_changes
+  - push_changes
+
+blocked_actions:
+  - deploy
+  - destructive_cleanup
+  - production_config_change
+  - release_action
+  - contract_major_change
+
+eval_gates:
+  - id: production_validation
+    command: "bash scripts/validate.sh"
+    required: true
+  - id: diff_check
+    command: "git diff --check"
+    required: true
+
+commit:
+  enabled: true
+  strategy: small_meaningful
+  push: true
+
+memory:
+  enabled: false
+  provider: strata
+  project: "Agent Notes"
+  mode: consolidate
+  retrieval_tests: true

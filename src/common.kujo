@@ -1,0 +1,75 @@
+export func get(value, key, fallback) {
+    if type(value) == "dict" && has_key(value, key) == 1 { return value[key] }
+    return fallback
+}
+
+export func has(values, wanted) {
+    for value in values { if value == wanted { return true } }
+    return false
+}
+
+export func canonical_json(value) {
+    if type(value) == "dict" {
+        mut members := []
+        for key in sort(keys(value)) { members = push(members, to_json(key) + ":" + canonical_json(value[key])) }
+        return "{" + join(members, ",") + "}"
+    }
+    if type(value) == "array" {
+        mut members := []
+        for item in value { members = push(members, canonical_json(item)) }
+        return "[" + join(members, ",") + "]"
+    }
+    return to_json(value)
+}
+
+export func parse_object(text, label) {
+    mut value := null
+    try { value = parse_json(text) } except error { return {"ok": false, "code": "malformed_json", "error": label + " is not valid JSON"} }
+    if type(value) != "dict" { return {"ok": false, "code": "invalid_shape", "error": label + " must be a JSON object"} }
+    return {"ok": true, "value": value}
+}
+
+export func safe_id(value) {
+    return type(value) == "string" && regex_match(value, "^[a-z][a-z0-9-]{2,127}$") && value != "." && value != ".."
+}
+
+export func valid_timestamp(value) {
+    return type(value) == "string" && regex_match(value, "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")
+}
+
+func sensitive_name(name) {
+    normalized := lower(replace_str(replace_str(name, "-", "_"), " ", "_"))
+    return has(["password", "passwd", "secret", "token", "api_key", "apikey", "authorization", "private_key", "client_secret", "access_key"], normalized)
+}
+
+export func find_sensitive_key(value, path) {
+    if type(value) == "dict" {
+        for key in keys(value) {
+            if sensitive_name(key) { return path + key }
+            found := find_sensitive_key(value[key], path + key + ".")
+            if found != "" { return found }
+        }
+    }
+    if type(value) == "array" {
+        mut index := 0
+        for item in value {
+            found := find_sensitive_key(item, path + to_string(index) + ".")
+            if found != "" { return found }
+            index = index + 1
+        }
+    }
+    return ""
+}
+
+export func bounded_int(value, fallback, minimum, maximum) {
+    if type(value) == "null" || value == "" { return {"ok": true, "value": fallback} }
+    text := to_string(value)
+    if !regex_match(text, "^[0-9]+$") { return {"ok": false, "code": "invalid_number", "error": "expected an integer"} }
+    number := to_int(text)
+    if number < minimum || number > maximum { return {"ok": false, "code": "out_of_range", "error": "value must be " + to_string(minimum) + ".." + to_string(maximum)} }
+    return {"ok": true, "value": number}
+}
+
+export func envelope(ok, data, error, code, version, contract) {
+    return {"ok": ok, "data": data, "error": error, "error_code": code, "tool_version": version, "contract_version": contract}
+}

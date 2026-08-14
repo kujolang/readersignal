@@ -1,0 +1,100 @@
+from src.common import get, parse_object, safe_id, canonical_json
+
+func parent_dir(path) {
+    mut index := len(path) - 1
+    while index >= 0 {
+        if substring(path, index, index + 1) == "/" { if index == 0 { return "/" }; return substring(path, 0, index) }
+        index = index - 1
+    }
+    return "."
+}
+
+func ensure_tree(path) {
+    if path == "" || path == "." { return }
+    parts := split(path, "/"); mut current := ""; if starts_with(path, "/") { current = "/" }
+    for part in parts {
+        if part != "" && part != "." {
+            if part == ".." { continue }
+            if current == "/" { current = "/" + part } else if current == "" { current = part } else { current = current + "/" + part }
+            if !path_is_dir(current) { create_dir(current) }
+        }
+    }
+}
+
+export func validate_state_path(path) {
+    if type(path) != "string" || trim(path) == "" { return "state path is empty or invalid" }
+    for part in split(replace_str(path, "\\", "/"), "/") { if part == ".." { return "state path traversal is not allowed" } }
+    if file_exists(path) && path_is_symlink(path) { return "state directory symlinks are not allowed" }
+    if file_exists(path) && !path_is_dir(path) { return "state path is not a directory" }
+    return ""
+}
+
+export func records_dir(state) { return join_path(state, "records") }
+export func history_dir(state) { return join_path(state, "history") }
+func locks_dir(state) { return join_path(state, "locks") }
+export func record_path(state, id) { return join_path(records_dir(state), id + ".json") }
+
+export func initialize(state, metadata) {
+    error := validate_state_path(state); if error != "" { return {"ok": false, "code": "unsafe_state", "error": error} }
+    ensure_tree(records_dir(state)); ensure_tree(history_dir(state)); ensure_tree(locks_dir(state))
+    path := join_path(state, "metadata.json")
+    if !path_is_file(path) { write_file_atomic(path, to_json_pretty(metadata) + "\n", true) }
+    return {"ok": true, "value": {"state": state, "initialized": true}}
+}
+
+func lock_path(state, id) { return join_path(locks_dir(state), id + ".lock") }
+
+func acquire_lock(state, id) {
+    path := lock_path(state, id)
+    if path_is_dir(path) { return {"ok": false, "code": "write_conflict", "error": "record write is locked: " + id} }
+    try { create_dir(path) } except error { return {"ok": false, "code": "write_conflict", "error": "could not acquire record lock: " + id} }
+    return {"ok": true, "path": path}
+}
+
+func release_lock(path) { if path_is_dir(path) { try { os_rmdir(path) } except error {} } }
+
+export func save_new(state, record) {
+    id := record["id"]
+    if !safe_id(id) { return {"ok": false, "code": "unsafe_id", "error": "unsafe record id"} }
+    lock := acquire_lock(state, id); if !lock["ok"] { return lock }
+    path := record_path(state, id)
+    if path_is_file(path) { release_lock(lock["path"]); return {"ok": false, "code": "duplicate_id", "error": "record already exists: " + id} }
+    if file_exists(path) && path_is_symlink(path) { release_lock(lock["path"]); return {"ok": false, "code": "symlink_escape", "error": "record symlinks are not allowed"} }
+    serialized := to_json_pretty(record) + "\n"
+    try { write_file_atomic(path, serialized, true) } except error { release_lock(lock["path"]); return {"ok": false, "code": "write_failed", "error": "atomic record write failed"} }
+    checksum := sha256(serialized)
+    event := {"schema_version": "1.0.0", "event": "record.created", "record_id": id, "actor": record["actor"], "at": record["created_at"], "record_sha256": checksum}
+    event_path := join_path(history_dir(state), substring(sha256(record["created_at"] + "\n" + id), 0, 32) + ".json")
+    try { write_file_atomic(event_path, to_json_pretty(event) + "\n", true) } except error { release_lock(lock["path"]); return {"ok": false, "code": "history_write_failed", "error": "record was saved but audit history write failed"} }
+    release_lock(lock["path"])
+    return {"ok": true, "value": {"path": path, "checksum": checksum}}
+}
+
+export func load_record(state, id) {
+    if !safe_id(id) { return {"ok": false, "code": "unsafe_id", "error": "unsafe record id"} }
+    path := record_path(state, id)
+    if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "not_found", "error": "record not found: " + id} }
+    if file_size(path) > 1048576 { return {"ok": false, "code": "record_too_large", "error": "record exceeds 1 MiB"} }
+    parsed := parse_object(read_file(path), "record " + id); if !parsed["ok"] { return parsed }
+    if get(parsed["value"], "id", "") != id { return {"ok": false, "code": "id_mismatch", "error": "record id does not match filename"} }
+    return {"ok": true, "value": parsed["value"], "checksum": sha256(read_file(path))}
+}
+
+export func list_records(state, kind, after, limit) {
+    mut records := []; mut warnings := []; mut truncated := false
+    dir := records_dir(state); if !path_is_dir(dir) { return {"records": records, "warnings": warnings, "truncated": false} }
+    for name in sort(list_dir(dir)) {
+        if ends_with(name, ".json") {
+            id := substring(name, 0, len(name) - 5)
+            if after == "" || id > after {
+                loaded := load_record(state, id)
+                if loaded["ok"] {
+                    record := loaded["value"]
+                    if kind == "" || get(record, "record_type", "") == kind { records = push(records, record) }
+                } else { warnings = push(warnings, {"id": id, "code": loaded["code"], "error": loaded["error"]}) }
+                if len(records) >= limit { truncated = true; break }
+            }
+        }
+    }
+    return {"records": records, "warnings": warnings, "truncated": truncated}
+}

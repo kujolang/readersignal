@@ -1,0 +1,13 @@
+
+## gate: production_validation
+$ bash scripts/validate.sh
+check passed: readersignal.kujo
+14 passed; 0 failed
+4 passed; 0 failed
+3 passed; 0 failed
+readersignal validation passed.
+gate production_validation: pass
+
+## gate: diff_check
+$ git diff --check
+gate diff_check: pass

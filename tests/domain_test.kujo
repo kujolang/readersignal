@@ -1,0 +1,6 @@
+from src.core import dispatch
+from src.args import parse_args
+mut pass:=0;mut fail:=0;func check(ok,label){if ok{pass=pass+1}else{fail=fail+1;eprint("FAIL: "+label)}};func opts(v){return parse_args(v,["json","dry-run","force"])};root:="/tmp/readersignal-domain-"+uuid_v4()
+a:=dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","analyst","--id","snapshot-a","--timestamp","2026-08-14T00:00:00Z"]));check(a["ok"],"snapshot")
+other:=root+"-other";write_file(other,"{\"schema_version\":\"1.0.0\",\"publication_receipt_id\":\"r\",\"window\":\"2026-09\",\"metrics\":{},\"measurement_status\":\"observed\",\"attribution_limit\":\"correlation only\"}",true);b:=dispatch("snapshot",opts(["--state",root,"--input",other,"--actor","analyst","--id","snapshot-b","--timestamp","2026-08-14T00:00:01Z"]));check(b["ok"],"second snapshot");c:=dispatch("compare",opts(["--state",root,"--id","snapshot-a","--other-id","snapshot-b"]));check(!c["ok"]&&c["code"]=="incompatible_comparison","window compatibility")
+print(to_string(pass)+" passed; "+to_string(fail)+" failed");if fail>0{exit(1)}

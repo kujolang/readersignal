@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Kujo local tool configuration","type":"object","additionalProperties":false,"properties":{"state":{"type":"string","minLength":1},"actor":{"type":"string","minLength":1,"maxLength":256},"limit":{"type":"integer","minimum":1,"maximum":1000}}}

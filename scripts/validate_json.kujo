@@ -1,0 +1,8 @@
+mut failed := 0
+for path in args() {
+    if !path_is_file(path) { eprint("missing JSON file: " + path); failed = failed + 1 }
+    else {
+        try { parse_json(read_file(path)) } except error { eprint("invalid JSON: " + path); failed = failed + 1 }
+    }
+}
+if failed > 0 { exit(1) }

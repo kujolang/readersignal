@@ -1,0 +1,6 @@
+from src.core import dispatch
+from src.args import parse_args
+mut pass:=0;mut fail:=0;func check(ok,label){if ok{pass=pass+1}else{fail=fail+1;eprint("FAIL: "+label)}};func opts(v){return parse_args(v,["json","dry-run","force"])};root:="/tmp/readersignal-security-"+uuid_v4()
+check(!dispatch("init",opts(["--state",root+"/../escape"]))["ok"],"state traversal");secret:=root+"-secret";write_file(secret,"{\"schema_version\":\"1.0.0\",\"token\":\"secret\"}",true);check(!dispatch("snapshot",opts(["--state",root,"--input",secret,"--actor","analyst"]))["ok"],"secret rejection");check(!dispatch("show",opts(["--state",root,"--id","../escape"]))["ok"],"record traversal")
+created:=dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","analyst","--id","snapshot-secure","--timestamp","2026-08-14T00:00:00Z"]));check(created["ok"],"secure create")
+print(to_string(pass)+" passed; "+to_string(fail)+" failed");if fail>0{exit(1)}

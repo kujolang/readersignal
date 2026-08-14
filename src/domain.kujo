@@ -1,0 +1,4 @@
+from src.common import get, has
+export func record_type(command){return command};export func id_prefix(command){return command}
+func required(payload,fields){for field in fields{if type(get(payload,field,null))=="null"||get(payload,field,"")==""{return field+" is required"}};return ""}
+export func validate_command(command,payload,artifact){if command=="snapshot"{e:=required(payload,["publication_receipt_id","window","metrics","measurement_status","attribution_limit"]);if e!=""{return e};if type(payload["metrics"])!="dict"{return "metrics must be an object"};return ""};if command=="feedback"{return required(payload,["publication_receipt_id","channel","summary","consent_basis"])};if has(["learn","followup"],command){return required(payload,["evidence_ids","recommendation","attribution_limit"])};return ""}

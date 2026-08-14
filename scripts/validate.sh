@@ -19,5 +19,24 @@ if rg -n 'python3|node |\.py\b|\.mjs\b' src tests scripts/*.kujo readersignal.ku
   printf 'readersignal validation failed: foreign runtime dependency reference found.\n' >&2; exit 1
 fi
 test ! -f package.json && test ! -f requirements.txt && test ! -f go.mod && test ! -f Cargo.toml
+badge_line() { rg -n -m 1 "$1" README.md 2>/dev/null | cut -d: -f1 || true; }
+version_badge="$(badge_line 'shields.io/badge/version-')"
+license_badge="$(badge_line 'shields.io/badge/license-')"
+kujo_badge="$(badge_line 'shields.io/badge/built%20with-Kujo-')"
+ci_badge="$(badge_line 'actions/workflows/validate.yml/badge.svg')"
+if [[ -z "$version_badge" || -z "$license_badge" || -z "$kujo_badge" || -z "$ci_badge" ]] ||
+   ! (( version_badge < license_badge && license_badge < kujo_badge && kujo_badge < ci_badge )); then
+  printf 'validation failed: README badges must be ordered version, license, built with Kujo, then CI.\n' >&2
+  exit 1
+fi
+if ! rg -q '^# Kujo ecosystem local artifact ignore block\.$' .gitignore ||
+   ! git check-ignore -q .loop-engineering/loop.yml; then
+  printf 'validation failed: the standard Kujo local-artifact ignore block is missing or incomplete.\n' >&2
+  exit 1
+fi
+if [[ -n "$(git ls-files '.loop-engineering/**')" ]]; then
+  printf 'validation failed: Loop Engineering evidence must remain local and untracked.\n' >&2
+  exit 1
+fi
 git diff --check -- . ':(exclude).loop-engineering/**'
 printf 'readersignal validation passed.\n'

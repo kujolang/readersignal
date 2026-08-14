@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Standardized README badge ordering and repository-local artifact ignores.
+- Kept Loop Engineering evidence available locally while removing it from published source.
+
 ## 0.2.0 - 2026-08-14
 
 - Preserved validation compatibility with immutable 0.1.0 records while emitting 0.2.0 records.

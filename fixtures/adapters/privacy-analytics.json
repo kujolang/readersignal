@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","id":"fixture-analytics","offline_fixture":true,"aggregated_only":true,"minimum_cohort_size":25,"sample":{"window":"2026-W32","views":1250,"cohort_size":25}}

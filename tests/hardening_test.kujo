@@ -1,0 +1,9 @@
+from src.hardening import analytics_adapter_conformance, retention_receipt, compare_samples, verify_presswire_receipt, compact_snapshots, benchmark_compaction
+from src.common import canonical_json
+mut pass:=0;mut fail:=0;func check(ok,label){if ok{pass=pass+1}else{fail=fail+1;eprint("FAIL: "+label)}}
+check(analytics_adapter_conformance(parse_json(read_file("fixtures/adapters/privacy-analytics.json")))["ok"],"privacy adapter");check(!analytics_adapter_conformance({"offline_fixture":true,"aggregated_only":true,"minimum_cohort_size":10,"sample":{"email":"person@example.invalid"}})["ok"],"direct identifier")
+check(retention_receipt({"id":"feedback-one","record_type":"feedback","created_day":1},{"version":"1","default":90,"feedback":30},40)["action"]=="delete","deletion receipt")
+mut left:=[];mut right:=[];mut i:=0;while i<100{left=push(left,10+i%3);right=push(right,12+i%3);i=i+1};comparison:=compare_samples(left,right);check(comparison["ok"]&&comparison["left_n"]==100&&comparison["difference"]==2.0&&comparison["causal_claim"]==false,"statistical comparison");check(!compare_samples([1,2],[3,4])["ok"],"sample minimum")
+receipt:={"id":"publication-one","record_type":"publish","created_at":"2026-08-14T00:00:00Z"};key:="fixture-key-123456";signature:=hmac_sha256(key,canonical_json(receipt));check(verify_presswire_receipt(receipt,signature,key)["ok"],"signed PressWire receipt");check(!verify_presswire_receipt(receipt,signature,"different-key-1234")["ok"],"receipt signature drift")
+snapshots:=[{"metrics":{"views":1,"responses":0}},{"metrics":{"views":1,"responses":1}}];rollup:=compact_snapshots(snapshots,16);check(rollup["ok"]&&rollup["rollups"]["views"]["sum"]==2.0,"bounded rollup");benchmark:=benchmark_compaction(100000);check(benchmark["ok"]&&benchmark["snapshots"]==100000&&benchmark["rollups"]["views"]["sum"]==100000,"high-volume compaction")
+print(to_string(pass)+" passed; "+to_string(fail)+" failed");if fail>0{exit(1)}

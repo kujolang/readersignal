@@ -71,12 +71,17 @@ export func save_new(state, record) {
     if file_exists(path) && path_is_symlink(path) { release_lock(lock["path"]); return {"ok": false, "code": "symlink_escape", "error": "record symlinks are not allowed"} }
     serialized := to_json_pretty(record) + "\n"
     if len(serialized) > 1048576 { release_lock(lock["path"]); return {"ok": false, "code": "record_too_large", "error": "serialized record exceeds 1 MiB"} }
-    try { write_file_atomic(path, serialized, true) } except error { release_lock(lock["path"]); return {"ok": false, "code": "write_failed", "error": "atomic record write failed"} }
     checksum := sha256(serialized)
     event := {"schema_version": "1.0.0", "event": "record.created", "record_id": id, "actor": record["actor"], "at": record["created_at"], "record_sha256": checksum}
     event_path := join_path(history_dir(state), substring(sha256(record["created_at"] + "\n" + id), 0, 32) + ".json")
     if file_exists(event_path) { release_lock(lock["path"]); return {"ok": false, "code": "history_conflict", "error": "audit history event already exists"} }
-    try { write_file_atomic(event_path, to_json_pretty(event) + "\n", true) } except error { release_lock(lock["path"]); return {"ok": false, "code": "history_write_failed", "error": "record was saved but audit history write failed"} }
+    try { write_file_atomic(path, serialized, true) } except error { release_lock(lock["path"]); return {"ok": false, "code": "write_failed", "error": "atomic record write failed"} }
+    try { write_file_atomic(event_path, to_json_pretty(event) + "\n", true) } except error {
+        try { delete_file(path) } except rollback_error {}
+        release_lock(lock["path"])
+        if path_is_file(path) { return {"ok": false, "code": "history_write_failed", "error": "audit history write failed and record rollback was incomplete"} }
+        return {"ok": false, "code": "history_write_failed", "error": "audit history write failed; record write was rolled back"}
+    }
     release_lock(lock["path"])
     return {"ok": true, "value": {"path": path, "checksum": checksum}}
 }

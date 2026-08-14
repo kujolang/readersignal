@@ -1,0 +1,20 @@
+from src.storage import initialize, save_new
+
+mut passed := 0
+mut failed := 0
+func check(ok, label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+
+root := "/tmp/storage-transaction-" + uuid_v4()
+metadata := {"schema_version":"1.0.0","tool":"storage-test","tool_version":"0.2.0","contract_version":"1.0.0","created_at":"2026-08-14T00:00:00Z"}
+check(initialize(root, metadata)["ok"], "storage initialized")
+record := {"schema_version":"1.0.0","tool_version":"0.2.0","contract_version":"1.0.0","id":"record-transaction","record_type":"test","command":"test","actor":"test-actor","created_at":"2026-08-14T00:00:01Z","provenance":[],"payload":{}}
+event_path := root + "/history/" + substring(sha256(record["created_at"] + "\n" + record["id"]), 0, 32) + ".json"
+write_file(event_path, "{}", true)
+conflict := save_new(root, record)
+check(!conflict["ok"] && conflict["code"] == "history_conflict", "history conflict fails before record persistence")
+check(!path_is_file(root + "/records/" + record["id"] + ".json"), "history conflict leaves no partial record")
+delete_file(event_path)
+check(save_new(root, record)["ok"], "clean retry persists record and audit event")
+
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

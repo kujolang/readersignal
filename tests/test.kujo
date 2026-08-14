@@ -14,9 +14,10 @@ bad:=root+"/bad.json";write_file(bad,"{",true);check(!dispatch("snapshot",opts([
 future:=root+"/future.json";write_file(future,"{\"schema_version\":\"2.0.0\"}",true);check(!dispatch("snapshot",opts(["--state",root,"--input",future,"--actor","fixture-human"]))["ok"],"schema major")
 check(dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","fixture-human","--dry-run"]))["value"]["dry_run"],"dry run")
 check(dispatch("doctor",opts(["--state",root]))["value"]["healthy"],"doctor")
-check(dispatch("version",opts([]))["value"]["version"]=="0.1.0","version")
+check(dispatch("version",opts([]))["value"]["version"]=="0.2.0","version")
 check(dispatch("export",opts(["--state",root]))["value"]["schema_version"]=="1.0.0","export")
 if id!=""{check(dispatch("show",opts(["--state",root,"--id",id]))["ok"],"show")}
+if id!=""{record_path:=root+"/records/"+id+".json";legacy:=parse_json(read_file(record_path));legacy["tool_version"]="0.1.0";write_file(record_path,to_json_pretty(legacy)+"\n",true);check(dispatch("validate",opts(["--state",root,"--id",id]))["ok"],"0.1.0 record compatibility")}
 bad_compare:=root+"/bad-compare.json";write_file(bad_compare,"{\"schema_version\":\"1.0.0\",\"window_a\":\"7d\",\"window_b\":\"30d\"}",true)
 check(!dispatch("compare",opts(["--state",root,"--input",bad_compare,"--actor","analyst"]))["ok"],"incompatible windows rejected")
 learning:=root+"/learning.json";write_file(learning,"{\"schema_version\":\"1.0.0\",\"evidence_ids\":[\"snapshot-fixture\"],\"attribution_limit\":\"correlation only\",\"recommendation\":\"investigate recurring question\"}",true)

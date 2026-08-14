@@ -1,6 +1,6 @@
 # ReaderSignal
 
-[![Version](https://img.shields.io/badge/version-0.1.0-black)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.2.0-black)](VERSION)
 [![CI](https://github.com/kujolang/readersignal/actions/workflows/validate.yml/badge.svg)](https://github.com/kujolang/readersignal/actions/workflows/validate.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)

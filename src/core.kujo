@@ -87,7 +87,8 @@ func validate_record(record, p) {
     for key in ["schema_version", "tool_version", "contract_version", "id", "record_type", "command", "actor", "created_at", "provenance", "payload"] {
         if has_key(record, key) == 0 { return {"ok": false, "code": "missing_field", "error": "record missing field: " + key} }
     }
-    if record["schema_version"] != "1.0.0" || record["contract_version"] != p["contract_version"] || record["tool_version"] != p["version"] { return {"ok": false, "code": "incompatible_record", "error": "record tool or contract version is incompatible"} }
+    supported_versions := get(p, "record_versions", [p["version"]])
+    if record["schema_version"] != "1.0.0" || record["contract_version"] != p["contract_version"] || !has(supported_versions, record["tool_version"]) { return {"ok": false, "code": "incompatible_record", "error": "record tool or contract version is incompatible"} }
     if !has(p["commands"], record["command"]) || record["record_type"] != record_type(record["command"]) { return {"ok": false, "code": "invalid_record", "error": "record command or type is invalid"} }
     if !safe_id(record["id"]) || !valid_timestamp(record["created_at"]) || type(record["actor"]) != "string" || trim(record["actor"]) == "" || len(record["actor"]) > 256 || !regex_match(record["actor"], "^[^\\x00-\\x1F\\x7F]+$") { return {"ok": false, "code": "invalid_record", "error": "record id, actor, or timestamp is invalid"} }
     if type(record["payload"]) != "dict" || type(record["provenance"]) != "array" { return {"ok": false, "code": "invalid_record", "error": "payload/provenance shape is invalid"} }
@@ -118,7 +119,7 @@ export func dispatch(command, parsed) {
     p := profile(); config_result := load_config(flag(parsed, "config", "")); if !config_result["ok"] { return config_result }; config := config_result["value"]
     state := setting(parsed, config, "state", p["default_state"])
     if command == "init" { return initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()}) }
-    if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "minimum_kujo": "1.0.1"}} }
+    if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "supported_record_versions": get(p, "record_versions", [p["version"]]), "minimum_kujo": "1.0.1"}} }
     if command == "doctor" {
         state_error := validate_state_path(state); listing := {"records": [], "warnings": [], "truncated": false}
         if state_error == "" { listing = list_records(state, "", "", 1000) }

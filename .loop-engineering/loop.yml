@@ -1,4 +1,4 @@
-objective: "Harden ReaderSignal into a production-ready, universally useful Kujo-native production Kujo tool without weakening its authority boundaries."
+objective: "Clean up, verify, and prepare ReaderSignal for the v0.2.0 release without weakening its authority boundaries."
 checklist_file: ""
 max_iterations: 1
 max_no_progress: 1
@@ -10,12 +10,13 @@ allowed_actions:
   - run_tests
   - commit_local_changes
   - push_changes
+  - tag_release
+  - publish_release
 
 blocked_actions:
   - deploy
   - destructive_cleanup
   - production_config_change
-  - release_action
   - contract_major_change
 
 eval_gates:

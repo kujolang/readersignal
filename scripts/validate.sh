@@ -8,6 +8,7 @@ cd "$ROOT"
 "$KUJO_RUNTIME" check readersignal.kujo
 "$KUJO_RUNTIME" run tests/test.kujo
 "$KUJO_RUNTIME" run tests/security_test.kujo
+"$KUJO_RUNTIME" run tests/storage_test.kujo
 "$KUJO_RUNTIME" run tests/domain_test.kujo
 while IFS= read -r document; do "$KUJO_RUNTIME" run scripts/validate_json.kujo -- "$document"; done < <(find fixtures schemas -type f -name '*.json' -print | sort)
 tmp_state="$(mktemp -d)"; trap 'find "$tmp_state" -depth -delete' EXIT

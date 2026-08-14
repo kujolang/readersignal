@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+KUJO_BIN=${KUJO_BIN:-/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo}
+exec "$KUJO_BIN" run "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/readersignal.kujo" -- "$@"

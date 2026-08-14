@@ -1,0 +1,3 @@
+.readersignal/
+*.tmp-*
+.env

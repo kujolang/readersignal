@@ -1,0 +1,20 @@
+from src.core import dispatch
+from cli import parse_args
+mut pass:=0;mut fail:=0
+func check(ok,label){if ok{pass=pass+1}else{fail=fail+1;eprint("FAIL: "+label)}}
+root:="/tmp/readersignal-test-"+uuid_v4()
+func opts(v){return parse_args(v,["json","dry-run","force","act","yes"])}
+check(dispatch("init",opts(["--state",root]))["ok"],"init")
+created:=dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","fixture-human","--timestamp","2026-08-14T00:00:00Z"]))
+check(created["ok"],"core workflow");id:="";if created["ok"]{id=created["value"]["id"]}
+check(!dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","fixture-human","--timestamp","2026-08-14T00:00:00Z"]))["ok"],"duplicate")
+check(!dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json"]))["ok"],"actor required")
+check(!dispatch("show",opts(["--state",root,"--id","../escape"]))["ok"],"traversal")
+bad:=root+"/bad.json";write_file(bad,"{",true);check(!dispatch("snapshot",opts(["--state",root,"--input",bad,"--actor","fixture-human"]))["ok"],"malformed JSON")
+future:=root+"/future.json";write_file(future,"{\"schema_version\":\"2.0.0\"}",true);check(!dispatch("snapshot",opts(["--state",root,"--input",future,"--actor","fixture-human"]))["ok"],"schema major")
+check(dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","fixture-human","--dry-run"]))["value"]["dry_run"],"dry run")
+check(dispatch("doctor",opts(["--state",root]))["value"]["healthy"],"doctor")
+check(dispatch("version",opts([]))["value"]["version"]=="0.1.0","version")
+check(dispatch("export",opts(["--state",root]))["value"]["schema_version"]=="1.0.0","export")
+if id!=""{check(dispatch("show",opts(["--state",root,"--id",id]))["ok"],"show")}
+print(to_string(pass)+" passed; "+to_string(fail)+" failed");if fail>0{exit(1)}

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enforced bounded numeric metric maps and non-empty evidence sets alongside stronger state, timestamp, actor, pagination, and immutable-record validation.
 - Added privacy-bounded domain contracts, compatible-window comparisons, immutable storage, structured failures, CI, and expanded verification.
 
 ## 0.1.0 - 2026-08-14

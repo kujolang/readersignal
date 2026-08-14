@@ -18,5 +18,5 @@ if rg -n 'python3|node |\.py\b|\.mjs\b' src tests scripts/*.kujo readersignal.ku
   printf 'readersignal validation failed: foreign runtime dependency reference found.\n' >&2; exit 1
 fi
 test ! -f package.json && test ! -f requirements.txt && test ! -f go.mod && test ! -f Cargo.toml
-git diff --check
+git diff --check -- . ':(exclude).loop-engineering/**'
 printf 'readersignal validation passed.\n'

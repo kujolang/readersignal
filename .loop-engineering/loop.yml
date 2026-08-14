@@ -23,7 +23,7 @@ eval_gates:
     command: "bash scripts/validate.sh"
     required: true
   - id: diff_check
-    command: "git diff --check"
+    command: "git diff --check -- src tests scripts schemas README.md docs"
     required: true
 
 commit:

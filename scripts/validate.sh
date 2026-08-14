@@ -16,11 +16,11 @@ tmp_state="$(mktemp -d)"; trap 'find "$tmp_state" -depth -delete' EXIT
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal --help >/dev/null
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal --version --json >/dev/null
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal doctor --state "$tmp_state/state" --json >/dev/null
-if rg -n 'python3|node |\.py\b|\.mjs\b' src tests scripts/*.kujo readersignal.kujo kujo.toml; then
+if grep -REn --include='*.kujo' 'python3|node |\.py\b|\.mjs\b' src tests scripts readersignal.kujo kujo.toml; then
   printf 'readersignal validation failed: foreign runtime dependency reference found.\n' >&2; exit 1
 fi
 test ! -f package.json && test ! -f requirements.txt && test ! -f go.mod && test ! -f Cargo.toml
-badge_line() { rg -n -m 1 "$1" README.md 2>/dev/null | cut -d: -f1 || true; }
+badge_line() { grep -En -m 1 "$1" README.md 2>/dev/null | cut -d: -f1 || true; }
 version_badge="$(badge_line 'shields.io/badge/version-')"
 license_badge="$(badge_line 'shields.io/badge/license-')"
 kujo_badge="$(badge_line 'shields.io/badge/built%20with-Kujo-')"
@@ -30,7 +30,7 @@ if [[ -z "$version_badge" || -z "$license_badge" || -z "$kujo_badge" || -z "$ci_
   printf 'validation failed: README badges must be ordered version, license, built with Kujo, then CI.\n' >&2
   exit 1
 fi
-if ! rg -q '^# Kujo ecosystem local artifact ignore block\.$' .gitignore ||
+if ! grep -Eq '^# Kujo ecosystem local artifact ignore block\.$' .gitignore ||
    ! git check-ignore -q .loop-engineering/loop.yml; then
   printf 'validation failed: the standard Kujo local-artifact ignore block is missing or incomplete.\n' >&2
   exit 1

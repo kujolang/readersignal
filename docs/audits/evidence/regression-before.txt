@@ -1,0 +1,9 @@
+FAIL: global rollup bound
+FAIL: snapshot object required
+FAIL: integer rollup bound
+FAIL: nested privacy identifier
+FAIL: calendar timestamp
+FAIL: missing flag value
+FAIL: dry run creates no state
+FAIL: force export preserves immutable state
+3 passed; 8 failed

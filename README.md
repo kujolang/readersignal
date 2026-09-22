@@ -9,7 +9,7 @@ ReaderSignal is a local-first Kujo tool for privacy-bounded measurement snapshot
 
 ## Production capabilities
 
-ReaderSignal provides immutable records, append-only audit events, atomic writes, per-record locks, bounded inputs and queries, privacy-preserving adapter fixtures, policy-versioned deletion receipts, sample-size and uncertainty-aware comparisons, optional signed PressWire verification, and 100,000-snapshot compaction benchmarks. Optional external capabilities fail honestly when no adapter is configured. It does not claim hosted identity or causal attribution.
+ReaderSignal provides immutable records, append-only audit events, atomic file writes, exclusive per-record locks, and bounded query pages. Kujo module helpers provide privacy-preserving adapter checks, retention decisions, uncertainty-aware sample comparisons, optional signed PressWire verification, and real 100,000-snapshot compaction checks. The CLI compares stored payloads; statistical sampling and retention decisions are module APIs. It does not claim hosted identity or causal attribution.
 
 See the [production review](docs/PRODUCTION_READINESS_REVIEW.md) and completed [hardening worklist](docs/NEXT_SESSION.md).
 
@@ -37,7 +37,7 @@ readersignal export --output readersignal-export.json --json
 
 Run `readersignal --help` for the complete command surface. Common flags include `--state`, `--config`, `--input`, `--actor`, `--timestamp`, `--id`, `--path`, `--type`, `--after`, `--limit`, `--output`, `--force`, `--dry-run`, and `--json`. JSON mode uses the stable `ok/data/error/error_code/tool_version/contract_version` envelope. Exit codes are 0 success, 1 operational failure, and 2 usage error.
 
-State defaults to `.readersignal/`. Traversal, symlinks, secret-shaped fields, malformed JSON, incompatible schemas, duplicate IDs, checksum drift, oversized resources, and unsafe overwrites fail closed. Core behavior is implemented entirely in Kujo; adapters remain optional.
+State defaults to `.readersignal/`. Traversal, symlinks at managed/input file boundaries, secret-shaped fields, malformed JSON, incompatible schemas, duplicate IDs, checksum drift, oversized resources, and unsafe overwrites fail closed. Core behavior is implemented entirely in Kujo; adapters remain optional.
 
 ## Project structure
 
@@ -58,4 +58,6 @@ bin/readersignal        logic-free launcher
 bash scripts/validate.sh
 ```
 
-The gate checks the entrypoint, every Kujo suite, JSON artifacts, CLI smoke paths, foreign-runtime boundaries, and the Git diff.
+The gate checks the entrypoint, every Kujo suite (including concurrent writers and pagination), JSON artifacts, CLI behavior, runtime boundaries, and the Git diff. Test state is isolated and cleaned by the gate.
+
+See [the hardening audit](docs/audits/repository-hardening.md) for measured results and [security boundaries](docs/security.md) for crash recovery and trusted-parent assumptions. Run `kujo run scripts/benchmark.kujo` for the repeatable compaction measurement.

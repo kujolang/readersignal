@@ -17,21 +17,27 @@ artifacts to 64 MiB, config/metadata/audit events to 64 KiB, and export envelope
 to 8 MiB. Secret-shaped payload keys and nested adapter identifiers are rejected.
 Adapter conformance validates supplied aggregates, not the truth of measurements.
 
-Record locks use exclusive atomic file publication. Record and history writes
-never replace existing targets. Exports cannot target the selected state tree,
-even with `--force` or through a canonical parent alias. Non-force exports use
-atomic no-clobber publication; force only replaces ordinary external exports.
-Do not point exports at a different, unrelated tool's state: ReaderSignal cannot
-identify all other applications' storage.
+Writers and recovery coordinate through persistent `guards/<id>.guard` POSIX
+advisory locks. The OS releases ownership on exit or SIGKILL; never unlink guard
+files or infer liveness from their age. `locks/<id>.lock` contains a bounded,
+checksummed write-ahead intent before either immutable record or event is
+published. Existing record/event files are never overwritten. Export protection
+and no-clobber semantics also remain in force.
 
-Record and event publication are individually atomic, **not one crash-atomic
-transaction**. Ordinary event write failures roll back the new record. A killed
-writer or power loss can leave a record without an event and a stale lock.
-`validate` checks event identity and checksums and refuses incomplete coverage.
-Never automatically delete locks by age: first stop writers, preserve a copy of
-state, inspect the record/event pair, and reconcile from trusted evidence. There
-is no automatic recovery or full-durability claim.
+`recover --id ID --actor OPERATOR` holds the same native guard, validates all
+journal fields and existing evidence, publishes only missing exact journal bytes,
+appends a `record.recovered` receipt, and clears the intent last. Repeating recovery
+is safe; conflicting, malformed or legacy journals fail closed. `--dry-run`
+performs validation without publishing or deleting files. An ordinary I/O failure
+now retains the intent for recovery instead of deleting a newly published record.
+
+This protocol covers process termination. Atomic file publication does not promise
+cross-file durability after power loss: the current runtime does not expose the
+parent-directory synchronization contract needed for that guarantee. Keep backups.
+Legacy unjournaled orphan records/locks require offline evidence review; the tool
+does not reconstruct an original creation event from an unsupported assumption.
 
 Queries process at most 1,000 candidates and retain at most 4 MiB of record source
-bytes per page. Warnings count toward the candidate bound. Directory names are
-still enumerated and sorted in memory; huge-directory memory is not constant.
+bytes per page. Warnings count toward the candidate bound. Directory enumeration uses a native bounded heap of at most 1,001 matching names.
+It still scans all directory entries on each page (O(N) time), but name-buffer
+memory is independent of directory size.

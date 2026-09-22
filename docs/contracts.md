@@ -17,8 +17,8 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
   corrupt filenames, and is never used as a filesystem path. Empty filtered pages
   can still be truncated. Continue until `truncated` is false.
 - Pages examine at most 1,000 candidates and retain at most 4 MiB of record source
-  bytes, in addition to the requested 1..1,000 result count. Directory enumeration
-  remains proportional to directory size. Export enforces 8 MiB for both stdout
+  bytes, in addition to the requested 1..1,000 result count. Directory enumeration time
+  remains proportional to directory size; name buffering is capped at 1,001. Export enforces 8 MiB for both stdout
   and file destinations; smaller pages can be requested with `--limit`.
 - `validate` checks creation-event identity/checksum and returns
   `validation_incomplete` when another page remains. Resume using `--after` and
@@ -33,3 +33,23 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
   1..256 bound. The statistical, retention, adapter and receipt helpers are Kujo
   module APIs, not additional CLI commands. Retention returns decisions; it does
   not delete records. `benchmark_compaction` now calls actual compaction.
+
+## Journal recovery and runtime upgrade (2026-09-22 follow-up)
+
+- Requires POSIX Kujo revision `cf785c0a7953717af16b657cda05b85d628144c5`
+  or compatible newer runtime; `version`/`doctor` expose `minimum_kujo_revision`.
+- `recover --id ID --actor OPERATOR [--dry-run]` is additive. Immutable record and
+  creation-event formats remain unchanged. New additive `record.recovered` events
+  identify the operator and checksum; existing history entries are preserved.
+- Transient intent files use journal version 1.0.0 in `locks/<id>.lock`, max 3 MiB.
+  Persistent POSIX lock inodes reside in `guards/`; they must not be removed.
+- Failed publication keeps its journal. A same-ID create returns
+  `recovery_required`; explicit recovery completes the original intent. Conflicts
+  return `recovery_conflict`, malformed/legacy intents fail closed, and a busy
+  native guard returns `write_conflict` without waiting or stealing ownership.
+- Recovery with no pending journal verifies the existing pair and reports
+  `already_complete`; it does not fabricate an event for unjournaled legacy data.
+- Listing adds `directory_entries_examined` and `directory_entries_buffered`.
+  It buffers at most 1,001 names and returns at most 1,000 candidates per page.
+  The cursor still omits `.json`; ordering compares complete filenames, fixing
+  prefix-ID continuation while preserving established filename sort order.

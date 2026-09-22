@@ -1,5 +1,9 @@
 # ReaderSignal repository hardening audit
 
+Follow-up: RS-13 process-crash recovery and RS-14 bounded name enumeration are
+implemented in [recovery and paging](../recovery-and-paging.md). The original
+audit below is an immutable account of the earlier implementation milestone.
+
 ## Repository and scope
 
 - Repository: `kujolang/readersignal`, branch `main`.

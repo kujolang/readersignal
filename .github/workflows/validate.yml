@@ -5,7 +5,7 @@ on:
 permissions:
   contents: read
 env:
-  KUJO_COMMIT: 5059695d14d6726bc17fef55e0b95511624967cf
+  KUJO_COMMIT: cf785c0a7953717af16b657cda05b85d628144c5
 jobs:
   kujo-native:
     runs-on: ubuntu-latest
@@ -20,7 +20,7 @@ jobs:
         with:
           toolchain: stable
       - name: Build pinned Kujo runtime
-        run: cargo build --release --manifest-path .runtime/kujo/Cargo.toml
+        run: cargo build --release --locked --manifest-path .runtime/kujo/Cargo.toml
       - name: Validate
         env:
           KUJO_BIN: ${{ github.workspace }}/.runtime/kujo/target/release/kujo

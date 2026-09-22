@@ -1,0 +1,68 @@
+from src.storage import initialize, begin_write, finish_write, recover_record, list_records
+from src.core import dispatch
+from src.args import parse_args
+mut passed := 0; mut failed := 0
+func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+func opts(v) { return parse_args(v,["json","dry-run","force"]) }
+runtime := args()[0]
+base := env_or("READERSIGNAL_TEST_TMP","/tmp") + "/readersignal-recovery-" + uuid_v4()
+for stage in ["intent","record","event"] {
+    root := base + "-" + stage
+    check(dispatch("init",opts(["--state",root]))["ok"], "init crash fixture " + stage)
+    killed := spawn_process([runtime,"run","tests/recovery_worker.kujo","--",root,stage],{"timeout_ms":10000,"max_output_bytes":4096})
+    check(killed.exitcode != 0 && file_exists(root + "/locks/snapshot-crash.lock"), "writer killed with intent " + stage)
+    before := read_file(root + "/locks/snapshot-crash.lock")
+    preview := recover_record(root,"snapshot-crash","recovery-operator",true)
+    check(preview["ok"] && read_file(root + "/locks/snapshot-crash.lock") == before, "preview preserves intent " + stage)
+    check(file_exists(root + "/records/snapshot-crash.json") == (stage != "intent"), "preview preserves record state " + stage)
+    recovered := spawn_process([runtime,"run","readersignal.kujo","--","recover","--state",root,"--id","snapshot-crash","--actor","recovery-operator","--json"],{"timeout_ms":10000,"max_output_bytes":4096})
+    check(recovered.exitcode == 0 && parse_json(recovered.stdout)["data"]["recovered"], "CLI recovers killed writer " + stage)
+    check(dispatch("validate",opts(["--state",root,"--id","snapshot-crash"]))["ok"], "recovered pair validates " + stage)
+    check(!file_exists(root + "/locks/snapshot-crash.lock") && len(list_dir(root + "/history")) == 2, "intent cleared and recovery audited " + stage)
+    check(recover_record(root,"snapshot-crash","retry",false)["value"]["already_complete"], "repeat recovery idempotent " + stage)
+}
+root := base + "-conflicts"
+dispatch("init",opts(["--state",root]))
+record := {"schema_version":"1.0.0","id":"snapshot-conflict","actor":"writer","created_at":"2026-09-22T00:00:00Z","payload":{}}
+tx := begin_write(root,record)
+check(tx["ok"], "begin holds native guard")
+contender := spawn_process([runtime,"run","readersignal.kujo","--","recover","--state",root,"--id","snapshot-conflict","--actor","contender","--json"],{"timeout_ms":5000,"max_output_bytes":4096})
+check(contender.exitcode == 1 && parse_json(contender.stdout)["error_code"] == "write_conflict", "live writer cannot be recovered")
+file_unlock(tx["handle"])
+write_file(root + "/records/snapshot-conflict.json","{}",false)
+check(!recover_record(root,"snapshot-conflict","operator",false)["ok"] && read_file(root + "/records/snapshot-conflict.json") == "{}", "conflicting evidence never overwritten")
+check(len(list_dir(root + "/history")) == 0 && file_exists(root + "/locks/snapshot-conflict.lock"), "conflict leaves intent and history unchanged")
+write_file(root + "/locks/snapshot-conflict.lock","{",true)
+check(!recover_record(root,"snapshot-conflict","operator",false)["ok"], "corrupt intent rejected")
+write_file(root + "/locks/snapshot-conflict.lock","record write in progress\n",true)
+check(!recover_record(root,"snapshot-conflict","operator",false)["ok"], "legacy lock cannot invent missing evidence")
+check(!recover_record(root,"../escape","operator",false)["ok"], "recovery id traversal")
+check(!recover_record(root,"snapshot-conflict","",false)["ok"], "recovery actor required")
+// A receipt published before a recovery process dies is retained on replay.
+receipt_root := base + "-receipt"; dispatch("init",opts(["--state",receipt_root]))
+tx = begin_write(receipt_root,record); file_unlock(tx["handle"])
+journal_text := read_file(receipt_root + "/locks/snapshot-conflict.lock")
+journal := parse_json(journal_text)
+journal["record_sha256"] = repeat("0",64)
+write_file(receipt_root + "/locks/snapshot-conflict.lock",to_json(journal),true)
+check(!recover_record(receipt_root,"snapshot-conflict","operator",false)["ok"] && !file_exists(receipt_root + "/records/snapshot-conflict.json"), "checksum corruption fails before publication")
+write_file(receipt_root + "/locks/snapshot-conflict.lock",journal_text,true)
+journal = parse_json(journal_text)
+receipt_path := receipt_root + "/history/recovered-" + substring(sha256("snapshot-conflict\n" + journal["record_sha256"]),0,32) + ".json"
+receipt := to_json({"schema_version":"1.0.0","event":"record.recovered","record_id":"snapshot-conflict","record_sha256":journal["record_sha256"],"actor":"first-recoverer","at":"2026-09-22T00:00:01Z"})
+write_file(receipt_path,receipt,false)
+check(recover_record(receipt_root,"snapshot-conflict","second-recoverer",false)["ok"] && read_file(receipt_path) == receipt, "recovery receipt survives repeated recovery")
+symlink_root := base + "-symlink"; dispatch("init",opts(["--state",symlink_root]))
+tx = begin_write(symlink_root,record); file_unlock(tx["handle"])
+linked := spawn_process(["ln","-s",symlink_root + "/absent-target",symlink_root + "/records/snapshot-conflict.json"],{"timeout_ms":5000,"max_output_bytes":1024})
+check(linked.exitcode == 0 && !recover_record(symlink_root,"snapshot-conflict","operator",false)["ok"] && !file_exists(symlink_root + "/absent-target"), "dangling symlink target refused")
+linked = spawn_process(["ln","-s",receipt_root + "/missing-intent",receipt_root + "/locks/snapshot-conflict.lock"],{"timeout_ms":5000,"max_output_bytes":1024})
+check(linked.exitcode == 0 && !recover_record(receipt_root,"snapshot-conflict","operator",false)["ok"], "dangling intent is not treated as completed recovery")
+// Filename ordering is authoritative even when one ID prefixes another.
+page_root := base + "-pages"; dispatch("init",opts(["--state",page_root]))
+for id in ["snapshot-a","snapshot-a-child","snapshot-b"] { write_file(page_root + "/records/" + id + ".json",to_json({"id":id}),false) }
+page := list_records(page_root,"","",1); next := list_records(page_root,"",page["next_cursor"],1)
+check(page["records"][0]["id"] == "snapshot-a-child" && next["records"][0]["id"] == "snapshot-a", "prefix IDs paginate without loss")
+check(page["directory_entries_buffered"] <= 1001, "directory buffer bounded")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

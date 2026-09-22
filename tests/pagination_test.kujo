@@ -10,6 +10,7 @@ for i in range(1002) {
     write_file(root + "/records/" + id + ".json",to_json({"id":id,"record_type":"snapshot"}),false)
 }
 page := list_records(root,"feedback","",1)
+check(page["directory_entries_buffered"] == 1001 && page["directory_entries_examined"] == 1002, "native directory names bounded")
 check(page["truncated"] && page["scanned"] == 1000 && len(page["records"]) == 0, "nonmatching reads bounded")
 rest := list_records(root,"feedback",page["next_cursor"],1)
 check(!rest["truncated"] && rest["scanned"] == 2, "filtered cursor resumes")

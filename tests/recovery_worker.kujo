@@ -1,0 +1,12 @@
+from src.storage import begin_write
+root := args()[0]; stage := args()[1]
+record := {"schema_version":"1.0.0","tool_version":"0.2.0","contract_version":"1.0.0","id":"snapshot-crash","record_type":"snapshot","command":"snapshot","actor":"writer","created_at":"2026-09-22T00:00:00Z","provenance":[],"payload":parse_json(read_file("fixtures/core.json"))}
+tx := begin_write(root,record)
+if !tx["ok"] { eprint(to_json(tx)); exit(1) }
+journal := parse_json(read_file(root + "/locks/snapshot-crash.lock"))
+if stage == "record" || stage == "event" { write_file_atomic(root + "/records/snapshot-crash.json",journal["record_text"],false) }
+if stage == "event" { write_file_atomic(root + "/history/" + substring(sha256(record["created_at"] + "\n" + record["id"]),0,32) + ".json",journal["event_text"],false) }
+// Terminate this Kujo writer with SIGKILL while it owns the native lock.
+// This is a fixed test command, not production input or an environment hook.
+spawn_process(["sh","-c","kill -KILL \"$PPID\""],{"timeout_ms":5000,"max_output_bytes":1024})
+eprint("SIGKILL did not terminate writer"); exit(1)

@@ -2,7 +2,7 @@ from src.args import parse_args
 from src.common import get, has, canonical_json, parse_object, safe_id, valid_timestamp, find_sensitive_key, bounded_int, envelope, utf8_size, safe_cursor
 from src.profile import profile
 from src.domain import record_type, id_prefix, validate_command
-from src.storage import initialize, save_new, load_record, list_records, validate_state_path, verify_record_history, inspect_state
+from src.storage import initialize, save_new, load_record, list_records, validate_state_path, verify_record_history, inspect_state, recover_record
 
 func flag(parsed, name, fallback) {
     if has_key(parsed["flags"], name) == 1 { return parsed["flags"][name] }
@@ -136,7 +136,8 @@ export func dispatch(command, parsed) {
     state := setting(parsed, config, "state", p["default_state"])
     if command == "init" && flag(parsed,"dry-run",false) { checked := inspect_state(state,{"tool":p["slug"],"contract_version":p["contract_version"]}); if !checked["ok"] { return checked }; return {"ok":true,"value":{"state":state,"dry_run":true}} }
     if command == "init" { return initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()}) }
-    if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "supported_record_versions": get(p, "record_versions", [p["version"]]), "minimum_kujo": "1.0.1"}} }
+    if command == "recover" { return recover_record(state,flag(parsed,"id",""),setting(parsed,config,"actor",""),flag(parsed,"dry-run",false)) }
+    if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "supported_record_versions": get(p, "record_versions", [p["version"]]), "minimum_kujo": p["minimum_kujo"], "minimum_kujo_revision":p["minimum_kujo_revision"]}} }
     if command == "doctor" {
         state_error := validate_state_path(state); listing := {"records": [], "warnings": [], "truncated": false}
         if state_error == "" { listing = list_records(state, "", "", 1000) }
@@ -145,7 +146,7 @@ export func dispatch(command, parsed) {
         if state_error != "" { code = "unsafe_state"; error = state_error }
         if state_error == "" && len(listing["warnings"]) > 0 { code = "corrupt_state"; error = "one or more records are unreadable" }
         if listing["truncated"] { code = "inspection_incomplete"; error = "state exceeds one inspection page; use paginated validate" }
-        return {"ok": healthy, "code": code, "error": error, "value": {"healthy": healthy, "tool": p["slug"], "version": p["version"], "minimum_kujo": "1.0.1", "state": state, "record_count": len(listing["records"]), "corrupt_records": listing["warnings"], "truncated": listing["truncated"], "limits": {"input_bytes": 1048576, "record_bytes": 1048576, "artifact_bytes": 67108864, "list_records": 1000}, "limitations": p["limitations"]}}
+        return {"ok": healthy, "code": code, "error": error, "value": {"healthy": healthy, "tool": p["slug"], "version": p["version"], "minimum_kujo": p["minimum_kujo"], "minimum_kujo_revision":p["minimum_kujo_revision"], "state": state, "record_count": len(listing["records"]), "corrupt_records": listing["warnings"], "truncated": listing["truncated"], "limits": {"input_bytes": 1048576, "record_bytes": 1048576, "artifact_bytes": 67108864, "list_records": 1000}, "limitations": p["limitations"]}}
     }
     if has(p["show_commands"], command) {
         id := flag(parsed, "id", ""); if id == "" { return {"ok": false, "code": "id_required", "error": "show requires --id"} }
@@ -192,7 +193,7 @@ export func dispatch(command, parsed) {
 }
 
 func usage(p) {
-    return p["name"] + " " + p["version"] + "\n\n" + p["description"] + "\n\nCommands:\n  " + join(p["commands"], "\n  ") + "\n\nCommon flags:\n  --state PATH       Local state directory\n  --config FILE      JSON defaults for state, actor, and limit\n  --input FILE       JSON command payload (1 MiB maximum)\n  --actor ID         Required for mutations\n  --timestamp UTC    Deterministic RFC 3339 timestamp\n  --id ID            Explicit stable record ID\n  --path FILE        Bounded artifact attachment\n  --type TYPE        Record filter for list/export\n  --after ID         Pagination cursor\n  --limit N          1..1000 records\n  --output FILE      Atomic JSON export\n  --force            Replace only an explicitly named safe output\n  --dry-run          Validate without writing\n  --json             Stable output envelope"
+    return p["name"] + " " + p["version"] + "\n\n" + p["description"] + "\n\nCommands:\n  " + join(p["commands"], "\n  ") + "\n\nCommon flags:\n  --state PATH       Local state directory\n  --config FILE      JSON defaults for state, actor, and limit\n  --input FILE       JSON command payload (1 MiB maximum)\n  --actor ID         Required for mutations\n  --timestamp UTC    Deterministic RFC 3339 timestamp\n  --id ID            Explicit stable record ID (required for recover)\n  --path FILE        Bounded artifact attachment\n  --type TYPE        Record filter for list/export\n  --after ID         Pagination cursor\n  --limit N          1..1000 records\n  --output FILE      Atomic JSON export\n  --force            Replace only an explicitly named safe output\n  --dry-run          Validate without writing\n  --json             Stable output envelope"
 }
 
 export func main(argv) {

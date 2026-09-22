@@ -1,0 +1,40 @@
+from src.storage import initialize, list_records
+from src.core import dispatch
+from src.args import parse_args
+mut passed := 0; mut failed := 0
+func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+root := env_or("READERSIGNAL_TEST_TMP","/tmp")+"/readersignal-pages-" + uuid_v4()
+initialize(root,{"tool":"readersignal","contract_version":"1.0.0"})
+for i in range(1002) {
+    id := "snapshot-" + to_string(10000 + i)
+    write_file(root + "/records/" + id + ".json",to_json({"id":id,"record_type":"snapshot"}),false)
+}
+page := list_records(root,"feedback","",1)
+check(page["truncated"] && page["scanned"] == 1000 && len(page["records"]) == 0, "nonmatching reads bounded")
+rest := list_records(root,"feedback",page["next_cursor"],1)
+check(!rest["truncated"] && rest["scanned"] == 2, "filtered cursor resumes")
+page = list_records(root,"","",1)
+check(page["truncated"] && len(page["records"]) == 1, "record count bound")
+rest = list_records(root,"",page["next_cursor"],1)
+check(rest["records"][0]["id"] != page["records"][0]["id"], "cursor does not repeat")
+checked := dispatch("validate",parse_args(["--state",root],[]))
+check(!checked["ok"] && checked["code"] == "validation_incomplete", "partial validation cannot pass")
+checked = dispatch("doctor",parse_args(["--state",root],[]))
+check(!checked["ok"] && checked["value"]["truncated"], "partial doctor cannot pass")
+for i in range(1002) { write_file(root + "/records/snapshot-" + to_string(10000 + i) + ".json","{",true) }
+page = list_records(root,"","",1)
+check(page["truncated"] && len(page["warnings"]) == 1000, "corrupt warnings bounded")
+rest = list_records(root,"",page["next_cursor"],1)
+check(!rest["truncated"] && len(rest["warnings"]) == 2, "corruption cursor resumes")
+large := root + "-large"
+initialize(large,{"tool":"readersignal","contract_version":"1.0.0"})
+for i in range(6) {
+    id := "snapshot-large-" + to_string(i)
+    write_file(large + "/records/" + id + ".json",to_json({"id":id,"record_type":"snapshot","extra":repeat("x",900000)}),false)
+}
+page = list_records(large,"","",1000)
+check(page["truncated"] && len(page["records"]) == 4, "retained source bytes bounded")
+rest = list_records(large,"",page["next_cursor"],1000)
+check(!rest["truncated"] && len(rest["records"]) == 2, "byte-budget pagination preserves remaining records")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

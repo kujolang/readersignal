@@ -1,8 +1,8 @@
 from src.args import parse_args
-from src.common import get, has, canonical_json, parse_object, safe_id, valid_timestamp, find_sensitive_key, bounded_int, envelope
+from src.common import get, has, canonical_json, parse_object, safe_id, valid_timestamp, find_sensitive_key, bounded_int, envelope, utf8_size, safe_cursor
 from src.profile import profile
 from src.domain import record_type, id_prefix, validate_command
-from src.storage import initialize, save_new, load_record, list_records, validate_state_path
+from src.storage import initialize, save_new, load_record, list_records, validate_state_path, verify_record_history, inspect_state
 
 func flag(parsed, name, fallback) {
     if has_key(parsed["flags"], name) == 1 { return parsed["flags"][name] }
@@ -18,7 +18,7 @@ func command_name(argv, commands) {
 }
 
 func command_tokens(argv, command) {
-    if command == "help" || (len(argv) > 0 && starts_with(argv[0], "--")) { return [] }
+    if command == "help" { return [] }
     if contains(command, " ") == 1 { return slice(argv, 2, len(argv)) }
     return slice(argv, 1, len(argv))
 }
@@ -29,6 +29,10 @@ func load_config(path) {
     if file_size(path) > 65536 { return {"ok": false, "code": "config_too_large", "error": "config exceeds 64 KiB"} }
     config_result := parse_object(read_file(path), "config"); if !config_result["ok"] { return config_result }
     for key in keys(config_result["value"]) { if !has(["state", "actor", "limit"], key) { return {"ok": false, "code": "unknown_config_key", "error": "unknown config key: " + key} } }
+    config := config_result["value"]
+    if has_key(config, "state") == 1 && (type(config["state"]) != "string" || trim(config["state"]) == "") { return {"ok": false, "code": "invalid_config", "error": "config state must be non-empty text"} }
+    if has_key(config, "actor") == 1 && (type(config["actor"]) != "string" || trim(config["actor"]) == "" || len(config["actor"]) > 256) { return {"ok": false, "code": "invalid_config", "error": "config actor must be bounded non-empty text"} }
+    if has_key(config, "limit") == 1 && (type(config["limit"]) != "int" || config["limit"] < 1 || config["limit"] > 1000) { return {"ok": false, "code": "invalid_config", "error": "config limit must be an integer in 1..1000"} }
     return config_result
 }
 
@@ -62,8 +66,7 @@ func artifact_metadata(path) {
 
 func create_record(command, parsed, config, p) {
     state := setting(parsed, config, "state", p["default_state"])
-    initialized := initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()})
-    if !initialized["ok"] { return initialized }
+    inspected := inspect_state(state, {"tool":p["slug"],"contract_version":p["contract_version"]}); if !inspected["ok"] { return inspected }
     input := read_payload(parsed); if !input["ok"] { return input }; payload := input["value"]
     actor := setting(parsed, config, "actor", "")
     if type(actor) != "string" || trim(actor) == "" || len(actor) > 256 || !regex_match(actor, "^[^\\x00-\\x1F\\x7F]+$") { return {"ok": false, "code": "actor_required", "error": "mutating commands require a bounded printable --actor or config actor"} }
@@ -79,6 +82,8 @@ func create_record(command, parsed, config, p) {
     record := {"schema_version": "1.0.0", "tool_version": p["version"], "contract_version": p["contract_version"], "id": id, "record_type": record_type(command), "command": command, "actor": actor, "created_at": timestamp, "provenance": get(payload, "provenance", []), "payload": payload}
     if type(artifact["value"]) == "dict" { record["artifact"] = artifact["value"] }
     if flag(parsed, "dry-run", false) == true { return {"ok": true, "value": {"dry_run": true, "record": record}} }
+    initialized := initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()})
+    if !initialized["ok"] { return initialized }
     stored := save_new(state, record); if !stored["ok"] { return stored }
     return {"ok": true, "value": {"record": record, "storage": stored["value"]}}
 }
@@ -89,10 +94,12 @@ func validate_record(record, p) {
     }
     supported_versions := get(p, "record_versions", [p["version"]])
     if record["schema_version"] != "1.0.0" || record["contract_version"] != p["contract_version"] || !has(supported_versions, record["tool_version"]) { return {"ok": false, "code": "incompatible_record", "error": "record tool or contract version is incompatible"} }
-    if !has(p["commands"], record["command"]) || record["record_type"] != record_type(record["command"]) { return {"ok": false, "code": "invalid_record", "error": "record command or type is invalid"} }
-    if !safe_id(record["id"]) || !valid_timestamp(record["created_at"]) || type(record["actor"]) != "string" || trim(record["actor"]) == "" || len(record["actor"]) > 256 || !regex_match(record["actor"], "^[^\\x00-\\x1F\\x7F]+$") { return {"ok": false, "code": "invalid_record", "error": "record id, actor, or timestamp is invalid"} }
+    if !has(["snapshot","feedback","learn","followup"], record["command"]) || record["record_type"] != record_type(record["command"]) { return {"ok": false, "code": "invalid_record", "error": "record command or type is invalid"} }
+    if !safe_id(record["id"]) || !starts_with(record["id"], id_prefix(record["command"]) + "-") || !valid_timestamp(record["created_at"]) || type(record["actor"]) != "string" || trim(record["actor"]) == "" || len(record["actor"]) > 256 || !regex_match(record["actor"], "^[^\\x00-\\x1F\\x7F]+$") { return {"ok": false, "code": "invalid_record", "error": "record id, actor, or timestamp is invalid"} }
     if type(record["payload"]) != "dict" || type(record["provenance"]) != "array" { return {"ok": false, "code": "invalid_record", "error": "payload/provenance shape is invalid"} }
+    if find_sensitive_key(record["payload"], "") != "" { return {"ok":false,"code":"secret_rejected","error":"record payload contains a sensitive field"} }
     artifact := get(record, "artifact", null)
+    if type(artifact) != "null" && type(artifact) != "dict" { return {"ok":false,"code":"invalid_record","error":"artifact must be an object"} }
     if type(artifact) == "dict" {
         path := get(artifact, "path", "")
         if path == "" || !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "artifact_missing", "error": "bound artifact is missing or unsafe"} }
@@ -104,30 +111,41 @@ func validate_record(record, p) {
     return {"ok": true}
 }
 
-func export_result(value, parsed, p) {
+func export_result(value, parsed, p, state) {
     output := flag(parsed, "output", "")
+    rendered := to_json_pretty(envelope(true, value, null, null, p["version"], p["contract_version"])) + "\n"
+    if len(rendered) > 8388608 || utf8_size(rendered) > 8388608 { return {"ok": false, "code": "output_too_large", "error": "output exceeds 8 MiB"} }
     if output == "" { return {"ok": true, "value": value} }
+    if path_is_dir(state) {
+        parts := split(output, "/"); parent := join(slice(parts, 0, len(parts) - 1), "/")
+        if parent == "" { parent = "."; if starts_with(output, "/") { parent = "/" } }
+        if path_is_dir(parent) {
+            target_parent := path_absolute(parent); state_root := path_absolute(state)
+            if target_parent == state_root || starts_with(target_parent, state_root + "/") { return {"ok": false, "code": "unsafe_output", "error": "exports must be outside managed state"} }
+        }
+    }
     if file_exists(output) && path_is_symlink(output) { return {"ok": false, "code": "unsafe_output", "error": "output symlinks are not allowed"} }
     if file_exists(output) && flag(parsed, "force", false) != true { return {"ok": false, "code": "output_exists", "error": "output exists; use --force only for intentional safe replacement"} }
-    rendered := to_json_pretty(envelope(true, value, null, null, p["version"], p["contract_version"])) + "\n"
-    if len(rendered) > 8388608 { return {"ok": false, "code": "output_too_large", "error": "output exceeds 8 MiB"} }
-    try { write_file_atomic(output, rendered, true) } except error { return {"ok": false, "code": "write_failed", "error": "atomic export write failed"} }
-    return {"ok": true, "value": {"output": output, "bytes": len(rendered), "sha256": sha256(rendered)}}
+    if flag(parsed,"dry-run",false) { return {"ok":true,"value":{"dry_run":true,"output":output,"bytes":utf8_size(rendered),"sha256":sha256(rendered)}} }
+    try { write_file_atomic(output, rendered, flag(parsed, "force", false)) } except error { return {"ok": false, "code": "write_failed", "error": "atomic export write failed"} }
+    return {"ok": true, "value": {"output": output, "bytes": utf8_size(rendered), "sha256": sha256(rendered)}}
 }
 
 export func dispatch(command, parsed) {
     p := profile(); config_result := load_config(flag(parsed, "config", "")); if !config_result["ok"] { return config_result }; config := config_result["value"]
     state := setting(parsed, config, "state", p["default_state"])
+    if command == "init" && flag(parsed,"dry-run",false) { checked := inspect_state(state,{"tool":p["slug"],"contract_version":p["contract_version"]}); if !checked["ok"] { return checked }; return {"ok":true,"value":{"state":state,"dry_run":true}} }
     if command == "init" { return initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()}) }
     if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "supported_record_versions": get(p, "record_versions", [p["version"]]), "minimum_kujo": "1.0.1"}} }
     if command == "doctor" {
         state_error := validate_state_path(state); listing := {"records": [], "warnings": [], "truncated": false}
         if state_error == "" { listing = list_records(state, "", "", 1000) }
-        healthy := state_error == "" && len(listing["warnings"]) == 0
+        healthy := state_error == "" && len(listing["warnings"]) == 0 && !listing["truncated"]
         mut code := null; mut error := null
         if state_error != "" { code = "unsafe_state"; error = state_error }
         if state_error == "" && len(listing["warnings"]) > 0 { code = "corrupt_state"; error = "one or more records are unreadable" }
-        return {"ok": healthy, "code": code, "error": error, "value": {"healthy": healthy, "tool": p["slug"], "version": p["version"], "minimum_kujo": "1.0.1", "state": state, "record_count": len(listing["records"]), "corrupt_records": listing["warnings"], "limits": {"input_bytes": 1048576, "record_bytes": 1048576, "artifact_bytes": 67108864, "list_records": 1000}, "limitations": p["limitations"]}}
+        if listing["truncated"] { code = "inspection_incomplete"; error = "state exceeds one inspection page; use paginated validate" }
+        return {"ok": healthy, "code": code, "error": error, "value": {"healthy": healthy, "tool": p["slug"], "version": p["version"], "minimum_kujo": "1.0.1", "state": state, "record_count": len(listing["records"]), "corrupt_records": listing["warnings"], "truncated": listing["truncated"], "limits": {"input_bytes": 1048576, "record_bytes": 1048576, "artifact_bytes": 67108864, "list_records": 1000}, "limitations": p["limitations"]}}
     }
     if has(p["show_commands"], command) {
         id := flag(parsed, "id", ""); if id == "" { return {"ok": false, "code": "id_required", "error": "show requires --id"} }
@@ -136,7 +154,7 @@ export func dispatch(command, parsed) {
     if has(p["list_commands"], command) {
         limit_result := bounded_int(setting(parsed, config, "limit", 100), 100, 1, 1000); if !limit_result["ok"] { return limit_result }
         kind := flag(parsed, "type", get(p["list_kinds"], command, ""))
-        after := flag(parsed, "after", ""); if after != "" && !safe_id(after) { return {"ok": false, "code": "unsafe_cursor", "error": "pagination cursor must be a safe record id"} }
+        after := flag(parsed, "after", ""); if after != "" && !safe_cursor(after) { return {"ok": false, "code": "unsafe_cursor", "error": "pagination cursor must be a bounded filename cursor"} }
         listing := list_records(state, kind, after, limit_result["value"])
         if len(listing["warnings"]) > 0 && listing["warnings"][0]["code"] == "unsafe_state" { return {"ok": false, "code": "unsafe_state", "error": listing["warnings"][0]["error"]} }
         return {"ok": true, "value": listing}
@@ -146,6 +164,7 @@ export func dispatch(command, parsed) {
         if left_id == "" || right_id == "" { return {"ok": false, "code": "ids_required", "error": "comparison requires --id and --other-id"} }
         left := load_record(state, left_id); if !left["ok"] { return left }
         right := load_record(state, right_id); if !right["ok"] { return right }
+        for loaded in [left, right] { checked := validate_record(loaded["value"], p); if !checked["ok"] { return checked } }
         compatibility_field := get(p,"comparison_compatibility_field","")
         if compatibility_field!="" && get(left["value"]["payload"],compatibility_field,null)!=get(right["value"]["payload"],compatibility_field,null) { return {"ok":false,"code":"incompatible_comparison","error":"records have incompatible "+compatibility_field} }
         left_artifact := get(left["value"], "artifact", {}); right_artifact := get(right["value"], "artifact", {})
@@ -153,20 +172,21 @@ export func dispatch(command, parsed) {
     }
     if has(p["validate_commands"], command) {
         id := flag(parsed, "id", "")
-        if id != "" { loaded := load_record(state, id); if !loaded["ok"] { return loaded }; checked := validate_record(loaded["value"], p); if !checked["ok"] { return checked }; return {"ok": true, "value": {"valid": true, "id": id, "checksum": loaded["checksum"]}} }
-        listing := list_records(state, "", "", 1000); mut invalid := []
-        for record in listing["records"] { checked := validate_record(record, p); if !checked["ok"] { invalid = push(invalid, {"id": record["id"], "code": checked["code"], "error": checked["error"]}) } }
-        valid := len(invalid) == 0 && len(listing["warnings"]) == 0
+        if id != "" { loaded := load_record(state, id); if !loaded["ok"] { return loaded }; checked := validate_record(loaded["value"], p); if !checked["ok"] { return checked }; history := verify_record_history(state, loaded["value"], loaded["checksum"]); if !history["ok"] { return history }; return {"ok": true, "value": {"valid": true, "id": id, "checksum": loaded["checksum"]}} }
+        after := flag(parsed, "after", ""); if !safe_cursor(after) { return {"ok":false,"code":"unsafe_cursor","error":"invalid validation cursor"} }
+        listing := list_records(state, "", after, 1000); mut invalid := []
+        for record in listing["records"] { checked := validate_record(record, p); if checked["ok"] { checked = verify_record_history(state, record, sha256_file(join_path(state, "records/" + record["id"] + ".json"))) }; if !checked["ok"] { invalid = push(invalid, {"id": record["id"], "code": checked["code"], "error": checked["error"]}) } }
+        valid := len(invalid) == 0 && len(listing["warnings"]) == 0 && !listing["truncated"]
         mut code := null; mut error := null
-        if !valid { code = "validation_failed"; error = "one or more records failed validation" }
-        return {"ok": valid, "code": code, "error": error, "value": {"valid": valid, "checked": len(listing["records"]), "invalid": invalid, "storage_warnings": listing["warnings"], "truncated": listing["truncated"]}}
+        if !valid { code = "validation_failed"; error = "one or more records failed validation" }; if listing["truncated"] { code = "validation_incomplete"; error = "validation page is incomplete; continue with --after" }
+        return {"ok": valid, "code": code, "error": error, "value": {"valid": valid, "checked": len(listing["records"]), "invalid": invalid, "storage_warnings": listing["warnings"], "truncated": listing["truncated"], "next_cursor": get(listing, "next_cursor", "")}}
     }
     if has(p["export_commands"], command) {
         limit_result := bounded_int(setting(parsed, config, "limit", 1000), 1000, 1, 1000); if !limit_result["ok"] { return limit_result }
-        after := flag(parsed, "after", ""); if after != "" && !safe_id(after) { return {"ok": false, "code": "unsafe_cursor", "error": "pagination cursor must be a safe record id"} }
+        after := flag(parsed, "after", ""); if after != "" && !safe_cursor(after) { return {"ok": false, "code": "unsafe_cursor", "error": "pagination cursor must be a bounded filename cursor"} }
         listing := list_records(state, flag(parsed, "type", ""), after, limit_result["value"])
         if len(listing["warnings"]) > 0 && listing["warnings"][0]["code"] == "unsafe_state" { return {"ok": false, "code": "unsafe_state", "error": listing["warnings"][0]["error"]} }
-        return export_result({"schema_version": "1.0.0", "tool": p["slug"], "records": listing["records"], "warnings": listing["warnings"], "truncated": listing["truncated"]}, parsed, p)
+        return export_result({"schema_version": "1.0.0", "tool": p["slug"], "records": listing["records"], "warnings": listing["warnings"], "truncated": listing["truncated"], "next_cursor": get(listing, "next_cursor", "")}, parsed, p, state)
     }
     return create_record(command, parsed, config, p)
 }
@@ -184,7 +204,8 @@ export func main(argv) {
     allowed := ["state", "config", "input", "id", "other-id", "actor", "timestamp", "path", "type", "after", "limit", "output", "json", "dry-run", "force"]
     for name in keys(parsed["flags"]) { if !has(allowed, name) { eprint(p["name"] + ": unknown flag --" + name); return 2 } }
     if len(parsed["positionals"]) > 0 { eprint(p["name"] + ": unexpected positional argument: " + parsed["positionals"][0]); return 2 }
-    result := dispatch(command, parsed)
+    mut result := {}
+    try { result = dispatch(command, parsed) } except error { result = {"ok": false, "code": "operation_failed", "error": "operation failed: " + to_string(error)} }
     output := envelope(result["ok"], get(result, "value", null), get(result, "error", null), get(result, "code", null), p["version"], p["contract_version"])
     if flag(parsed, "json", false) { print(to_json_pretty(output)) }
     else if result["ok"] { print(p["name"] + ": ok\n" + to_json_pretty(get(result, "value", null))) }

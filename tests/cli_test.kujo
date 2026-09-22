@@ -1,0 +1,10 @@
+runtime := args()[0]; mut passed := 0; mut failed := 0
+func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+version := spawn_process([runtime,"run","readersignal.kujo","--","--version","--json"],{"timeout_ms":5000,"max_output_bytes":4096})
+check(version.exitcode == 0 && parse_json(version.stdout)["ok"], "version alias JSON envelope")
+missing := spawn_process([runtime,"run","readersignal.kujo","--","snapshot","--actor"],{"timeout_ms":5000,"max_output_bytes":4096})
+check(missing.exitcode == 2, "missing value usage exit")
+unknown := spawn_process([runtime,"run","readersignal.kujo","--","--version","--unknown"],{"timeout_ms":5000,"max_output_bytes":4096})
+check(unknown.exitcode == 2, "version flags validated")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

@@ -1,0 +1,50 @@
+from src.core import dispatch
+from src.args import parse_args
+from src.hardening import compact_snapshots, analytics_adapter_conformance
+from src.common import valid_timestamp, utf8_size
+from src.storage import save_new, load_record, verify_record_history
+mut passed := 0; mut failed := 0
+func check(ok, label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+func opts(v) { return parse_args(v, ["json", "dry-run", "force"]) }
+root := env_or("READERSIGNAL_TEST_TMP","/tmp")+"/readersignal-audit-" + uuid_v4()
+check(!compact_snapshots([{"metrics":{"a":1}}, {"metrics":{"b":2}}], 1)["ok"], "global rollup bound")
+check(!compact_snapshots([null], 1)["ok"], "snapshot object required")
+check(!compact_snapshots([], 1.5)["ok"], "integer rollup bound")
+check(!analytics_adapter_conformance({"offline_fixture":true,"aggregated_only":true,"minimum_cohort_size":10,"sample":{"nested":[{"email":"test@example.invalid"}]}})["ok"], "nested privacy identifier")
+check(!valid_timestamp("2026-02-30T00:00:00Z"), "calendar timestamp")
+check(valid_timestamp("2024-02-29T00:00:00Z"), "leap timestamp")
+check(len(opts(["--actor"])["errors"]) == 1, "missing flag value")
+dry := dispatch("snapshot", opts(["--state",root,"--input","fixtures/core.json","--actor","auditor","--dry-run"]))
+check(dry["ok"] && !file_exists(root), "dry run creates no state")
+created := dispatch("snapshot", opts(["--state",root,"--input","fixtures/core.json","--actor","auditor","--id","snapshot-audit"]))
+check(created["ok"], "audit fixture created")
+path := root + "/records/snapshot-audit.json"; before := read_file(path)
+exported := dispatch("export", opts(["--state",root,"--output",path,"--force"]))
+check(!exported["ok"] && read_file(path) == before, "force export preserves immutable state")
+write_file(path,before,true)
+config := root + "/config.json"; write_file(config,"{\"limit\":true}",true)
+check(!dispatch("report", opts(["--state",root,"--config",config]))["ok"], "config schema types enforced")
+check(utf8_size("aé🙂") == 7, "UTF-8 byte count")
+loaded := load_record(root,"snapshot-audit")
+check(verify_record_history(root,loaded["value"],loaded["checksum"])["ok"], "matching audit history")
+event_path := root + "/history/" + substring(sha256(loaded["value"]["created_at"] + "\n" + "snapshot-audit"),0,32) + ".json"
+write_file(event_path,"{}",true)
+check(!dispatch("validate",opts(["--state",root,"--id","snapshot-audit"]))["ok"], "audit drift detected")
+record := loaded["value"]; record["id"] = "snapshot-unicode"; record["payload"] = {"extra":repeat("🙂",270000)}
+check(!save_new(root,record)["ok"] && !file_exists(root + "/records/snapshot-unicode.json"), "serialized record byte bound")
+check(len(list_dir(root + "/locks")) == 0, "oversized record releases lock")
+check(!compact_snapshots([{"metrics":{"views":parse_json("1e308")}},{"metrics":{"views":parse_json("1e308")}}],1)["ok"], "rollup overflow rejected")
+check(!analytics_adapter_conformance({"offline_fixture":true,"aggregated_only":true,"minimum_cohort_size":25,"sample":{"cohort_size":10}})["ok"], "actual cohort cannot undercut policy")
+output := root + "-export.json"
+check(dispatch("export",opts(["--state",root,"--output",output]))["ok"], "ordinary export")
+before_output := read_file(output)
+check(!dispatch("export",opts(["--state",root,"--output",output]))["ok"] && read_file(output) == before_output, "export does not clobber")
+check(dispatch("export",opts(["--state",root,"--output",output,"--force"]))["ok"], "force replaces ordinary export")
+dry_init := root + "-dry-init"
+check(dispatch("init",opts(["--state",dry_init,"--dry-run"]))["ok"] && !file_exists(dry_init), "init dry run creates no state")
+dry_export := root + "-dry-export"
+check(dispatch("export",opts(["--state",root,"--output",dry_export,"--dry-run"]))["ok"] && !file_exists(dry_export), "export dry run writes no file")
+write_file(root + "/metadata.json","{\"tool\":\"foreign\",\"contract_version\":\"1.0.0\"}",true)
+check(!dispatch("snapshot",opts(["--state",root,"--input","fixtures/core.json","--actor","analyst","--dry-run"]))["ok"], "dry run validates existing state compatibility")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

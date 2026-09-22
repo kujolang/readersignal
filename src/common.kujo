@@ -34,7 +34,12 @@ export func safe_id(value) {
 }
 
 export func valid_timestamp(value) {
-    return type(value) == "string" && regex_match(value, "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$")
+    if type(value) != "string" || !regex_match(value, "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$") { return false }
+    year := to_int(substring(value, 0, 4)); month := to_int(substring(value, 5, 7)); day := to_int(substring(value, 8, 10))
+    days := [31,28,31,30,31,30,31,31,30,31,30,31]
+    maximum := days[month - 1]
+    if month == 2 && year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { maximum = 29 }
+    return day <= maximum
 }
 
 func sensitive_name(name) {
@@ -65,11 +70,26 @@ export func bounded_int(value, fallback, minimum, maximum) {
     if type(value) == "null" || value == "" { return {"ok": true, "value": fallback} }
     text := to_string(value)
     if !regex_match(text, "^[0-9]+$") { return {"ok": false, "code": "invalid_number", "error": "expected an integer"} }
-    number := to_int(text)
+    mut number := 0
+    try { number = to_int(text) } except error { return {"ok": false, "code": "out_of_range", "error": "integer is too large"} }
     if number < minimum || number > maximum { return {"ok": false, "code": "out_of_range", "error": "value must be " + to_string(minimum) + ".." + to_string(maximum)} }
     return {"ok": true, "value": number}
 }
 
 export func envelope(ok, data, error, code, version, contract) {
     return {"ok": ok, "data": data, "error": error, "error_code": code, "tool_version": version, "contract_version": contract}
+}
+
+// Kujo 1.0.1 len(text) counts characters. Base64 gives byte length without
+// changing the minimum runtime contract or iterating Unicode in Kujo.
+export func utf8_size(text) {
+    encoded := encode_base64(text); padding := 0
+    if ends_with(encoded,"==") { padding = 2 } else if ends_with(encoded,"=") { padding = 1 }
+    return to_int(len(encoded) / 4) * 3 - padding
+}
+
+// Cursors are compared lexically, never joined into filesystem paths. Corrupt
+// filenames must remain resumable even when they are not valid record IDs.
+export func safe_cursor(value) {
+    return type(value) == "string" && len(value) <= 255 && contains(value,"/") == 0 && contains(value,"\\") == 0
 }

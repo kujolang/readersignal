@@ -1,0 +1,27 @@
+from src.core import dispatch
+from src.args import parse_args
+mut failed := 0; mut passed := 0
+func check(ok, label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+runtime := args()[0]
+root := env_or("READERSIGNAL_TEST_TMP","/tmp")+"/readersignal-concurrent-" + uuid_v4()
+check(dispatch("init", parse_args(["--state",root],[]))["ok"], "initialize concurrent fixture")
+// Shell only schedules actual CLI processes. Paths are positional arguments, never shell source.
+script := "for i in 1 2 3 4 5 6 7 8; do (\"$1\" run readersignal.kujo -- snapshot --state \"$2\" --input fixtures/core.json --actor \"actor-$i\" --id snapshot-contended --timestamp 2026-09-22T00:00:00Z --json > \"$2/out-$i\"; echo $? > \"$2/status-$i\") & done; wait"
+result := spawn_process(["sh","-c",script,"readersignal-test",runtime,root],{"timeout_ms":30000,"max_output_bytes":4096})
+check(result.exitcode == 0, "concurrent CLI processes finish")
+mut successes := 0
+for i in range(1,9) {
+    status := trim(read_file(root + "/status-" + to_string(i)))
+    receipt := parse_json(read_file(root + "/out-" + to_string(i)))
+    if status == "0" { successes = successes + 1; check(receipt["ok"], "winner reports success") }
+    else { check(status == "1" && !receipt["ok"], "loser reports operational failure") }
+}
+check(successes == 1, "exactly one immutable writer succeeds")
+record := read_file(root + "/records/snapshot-contended.json")
+events := list_dir(root + "/history")
+check(len(events) == 1, "exactly one audit event")
+event := parse_json(read_file(root + "/history/" + events[0]))
+check(event["record_sha256"] == sha256(record), "event matches winning record")
+check(len(list_dir(root + "/locks")) == 0, "locks released")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

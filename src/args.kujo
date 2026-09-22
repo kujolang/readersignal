@@ -61,7 +61,7 @@ func parse_args(tokens, bool_flags) {
                 i = i + 2
                 continue
             }
-            flags[name] := ""
+            errors = push(errors, "--" + name + " requires a value")
             i = i + 1
             continue
         }

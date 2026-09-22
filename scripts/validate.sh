@@ -5,14 +5,22 @@ KUJO_RUNTIME="${KUJO_BIN:-$ROOT/../kujo/target/release/kujo}"
 if [[ ! -x "$KUJO_RUNTIME" ]] && command -v kujo >/dev/null 2>&1; then KUJO_RUNTIME="$(command -v kujo)"; fi
 if [[ ! -x "$KUJO_RUNTIME" ]]; then printf 'readersignal: Kujo runtime not found; set KUJO_BIN.\n' >&2; exit 2; fi
 cd "$ROOT"
+tmp_state="$(mktemp -d)"
+trap 'find "$tmp_state" -depth -delete' EXIT
+export READERSIGNAL_TEST_TMP="$tmp_state"
 "$KUJO_RUNTIME" check readersignal.kujo
 "$KUJO_RUNTIME" run tests/test.kujo
 "$KUJO_RUNTIME" run tests/security_test.kujo
 "$KUJO_RUNTIME" run tests/storage_test.kujo
 "$KUJO_RUNTIME" run tests/domain_test.kujo
 "$KUJO_RUNTIME" run tests/hardening_test.kujo
-while IFS= read -r document; do "$KUJO_RUNTIME" run scripts/validate_json.kujo -- "$document"; done < <(find fixtures schemas -type f -name '*.json' -print | sort)
-tmp_state="$(mktemp -d)"; trap 'find "$tmp_state" -depth -delete' EXIT
+"$KUJO_RUNTIME" run tests/audit_test.kujo
+"$KUJO_RUNTIME" run tests/pagination_test.kujo
+"$KUJO_RUNTIME" run tests/concurrency_test.kujo -- "$KUJO_RUNTIME"
+"$KUJO_RUNTIME" run tests/cli_test.kujo -- "$KUJO_RUNTIME"
+documents=()
+while IFS= read -r document; do documents+=("$document"); done < <(find fixtures schemas -type f -name '*.json' -print | sort)
+"$KUJO_RUNTIME" run scripts/validate_json.kujo -- "${documents[@]}"
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal --help >/dev/null
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal --version --json >/dev/null
 KUJO_BIN="$KUJO_RUNTIME" ./bin/readersignal doctor --state "$tmp_state/state" --json >/dev/null

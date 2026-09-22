@@ -1,0 +1,11 @@
+from src.hardening import compact_snapshots
+body := repeat("{\"metrics\":{\"views\":1,\"responses\":0}},{\"metrics\":{\"views\":1,\"responses\":1}},", 500)
+snapshots := parse_json("[" + substring(body, 0, len(body) - 1) + "]")
+mut samples := []
+for run in range(5) {
+    start := time_us()
+    result := compact_snapshots(snapshots, 16)
+    samples = push(samples, time_us() - start)
+    if !result["ok"] || result["rollups"]["views"]["sum"] != 1000.0 || result["rollups"]["responses"]["sum"] != 500.0 { eprint("compaction mismatch"); exit(1) }
+}
+print(to_json({"snapshots":1000,"runs":5,"microseconds":samples,"median_us":sort(samples)[2]}))

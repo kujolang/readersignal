@@ -3,6 +3,15 @@ from src.core import dispatch
 from src.args import parse_args
 mut passed := 0; mut failed := 0
 func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+// A bare filename has an empty dirname in Kujo; reading still uses cwd.
+for flag in ["--input","--config"] {
+    mut parsed_local := false
+    try {
+        result := dispatch("snapshot",parse_args(["--state",env_or("READERSIGNAL_TEST_TMP","/tmp") + "/bare-input-" + uuid_v4(),"--actor","test",flag,"kujo.toml"],[]))
+        parsed_local = !result["ok"] && result["code"] == "malformed_json"
+    } except error { parsed_local = false }
+    check(parsed_local,"bare filename reaches JSON parser " + flag)
+}
 root := env_or("READERSIGNAL_TEST_TMP","/tmp") + "/recovery-status-" + uuid_v4()
 opts := parse_args(["--state",root,"--id","snapshot-legacy"],[])
 check(dispatch("recovery-status",opts)["value"]["status"] == "absent" && !file_exists(root),"absent state inspection has no side effects")

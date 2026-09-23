@@ -23,11 +23,16 @@ func command_tokens(argv, command) {
     return slice(argv, 1, len(argv))
 }
 
+func read_local_text(path, maximum) {
+    parent := dirname(path); if parent == "" { parent = "." }
+    return read_file_beneath(parent,basename(path),maximum)
+}
+
 func load_config(path) {
     if path == "" { return {"ok": true, "value": {}} }
     if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "config_not_found", "error": "config must be a regular file"} }
     if file_size(path) > 65536 { return {"ok": false, "code": "config_too_large", "error": "config exceeds 64 KiB"} }
-    config_result := parse_object(read_file_beneath(dirname(path),basename(path),65536), "config"); if !config_result["ok"] { return config_result }
+    config_result := parse_object(read_local_text(path,65536), "config"); if !config_result["ok"] { return config_result }
     for key in keys(config_result["value"]) { if !has(["state", "actor", "limit"], key) { return {"ok": false, "code": "unknown_config_key", "error": "unknown config key: " + key} } }
     config := config_result["value"]
     if has_key(config, "state") == 1 && (type(config["state"]) != "string" || trim(config["state"]) == "") { return {"ok": false, "code": "invalid_config", "error": "config state must be non-empty text"} }
@@ -47,7 +52,7 @@ func read_payload(parsed) {
     if path == "" { return {"ok": true, "value": {"schema_version": "1.0.0"}} }
     if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "input_not_found", "error": "input must be a regular file"} }
     if file_size(path) > 1048576 { return {"ok": false, "code": "input_too_large", "error": "input exceeds 1 MiB"} }
-    parsed_payload := parse_object(read_file_beneath(dirname(path),basename(path),1048576), "input"); if !parsed_payload["ok"] { return parsed_payload }
+    parsed_payload := parse_object(read_local_text(path,1048576), "input"); if !parsed_payload["ok"] { return parsed_payload }
     payload := parsed_payload["value"]
     schema := get(payload, "schema_version", "1.0.0")
     if type(schema) != "string" || !starts_with(schema, "1.") { return {"ok": false, "code": "incompatible_schema", "error": "input schema major must be 1"} }

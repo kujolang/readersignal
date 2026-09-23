@@ -16,7 +16,9 @@ version label alone does not establish availability of the preview `file_lock`,
 The selected revision was verified present in Kujo's remote branch ancestry; no
 sibling files were modified. The source implementation and the installed binary
 were both inspected/exercised. No claim of locally rebuilding that exact runtime
-revision is made; CI is the pinned-source build gate.
+revision is made. Pinned-source CI run 35796716113 subsequently passed.
+The [completion review](audits/completion.md) records the current verification
+and remaining upstream durability requirements.
 
 Stop older writers before upgrading. Existing record, metadata, configuration and
 creation-event formats remain valid. Run `readersignal init --state PATH` to add
@@ -82,6 +84,12 @@ without creating, publishing or removing files. It requires the guard created by
 the original writer to exist. An already-completed pair is validated and reported
 as `already_complete`; recovery never synthesizes evidence for a missing journal.
 The stable JSON envelope and success/operational/usage exit classes remain intact.
+
+Use `readersignal recovery-status --state PATH --id ID --json` for read-only
+evidence classification, including legacy state without guards. It emits a compact
+observation without copying sensitive evidence or creating files; zero exit means
+inspection succeeded, not that state is healthy. See the
+[offline review procedure](audits/completion.md#legacy-review-procedure).
 
 Legacy directory/text locks contain insufficient evidence to reconstruct an
 original write. They fail closed and require offline review after all writers

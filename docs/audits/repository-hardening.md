@@ -1,3 +1,6 @@
+> Current remaining-work disposition: [2026-09-23 completion review](completion.md).
+> The RS-13/RS-14 backlog below is historical and was completed in the recovery follow-up.
+
 # ReaderSignal repository hardening audit
 
 Follow-up: RS-13 process-crash recovery and RS-14 bounded name enumeration are

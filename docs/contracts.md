@@ -53,3 +53,12 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
   It buffers at most 1,001 names and returns at most 1,000 candidates per page.
   The cursor still omits `.json`; ordering compares complete filenames, fixing
   prefix-ID continuation while preserving established filename sort order.
+
+## Recovery evidence inspection
+
+`recovery-status --id ID` is additive and read-only, including on pre-guard legacy
+state. It classifies evidence without taking ownership or repairing files. Zero
+exit means the observation succeeded; inspect `data.status` and use `validate`
+for a health gate. See [the completion review](audits/completion.md). Managed
+reads now enforce byte limits on opened handles; concurrent read failures may
+return `record_read_failed` without dropping the rest of a list page.

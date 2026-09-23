@@ -75,3 +75,5 @@ Recovery replays a validated write intent, refuses active writers and conflictin
 files, and appends a recovery receipt. Legacy locks without journals need offline
 review; recovery never invents missing historical evidence. See
 [recovery and paging](docs/recovery-and-paging.md) for upgrade and failure semantics.
+
+For read-only legacy recovery diagnosis, use `readersignal recovery-status --state PATH --id ID --json`. See the [remaining-work review](docs/audits/completion.md) for safe restore procedures and durability boundaries.

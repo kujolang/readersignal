@@ -5,8 +5,9 @@ Repository: `kujolang/readersignal`, branch `main`. Starting SHA:
 blocked directory durability mechanism in Kujo and adopts it here. The user
 explicitly authorized this cross-repository follow-up. Both repositories started
 clean. Ending implementation SHA:
-`b83e6d27c208d7a9dd14948c5014fdb0b2156143`; a following documentation commit
-carries verification receipts.
+`0b283c75cd8be5037aa5205bbf6e131e31062be7` (core implementation
+`b83e6d27c208d7a9dd14948c5014fdb0b2156143`); following documentation commits
+carry verification receipts.
 
 ## Findings and changes
 
@@ -172,14 +173,6 @@ building the binary. Tests were not weakened to hide this compatibility failure.
 The fixture path in the new backup test was corrected to the existing
 `fixtures/core.json` before its first execution.
 
-Optimized-build verification was interrupted before completion during the first
-run; its temporary process/log were lost and the installed release binary still
-lacked the barrier. The build was restarted with a repository-local log at
-`kujo/.tmp/directory-durability/release-build.txt`. The completed debug-runtime
-gate above is the current verified result; release-runtime receipt follows when
-the rebuilt binary passes capability probing and the same gate.
-
-
 ### Linux portability correction
 
 Kujo CI run 35912612913 exposed that its traversal capability may use a Linux
@@ -189,4 +182,33 @@ run 35915557080 also failed at the new barrier. Kujo fix
 the retained directory, without reopening an ambient path; ReaderSignal now pins
 that correction. The existing nested-directory regression stays enabled.
 The macOS release gate at the earlier revision passed 218 checks in 26.70 s;
-this is not evidence of Linux correctness. Corrected-revision receipts follow.
+this is not evidence of Linux correctness. The corrected source built successfully
+with `cargo build --release --locked`. The corrected macOS release runtime passed
+the same full gate: 218 assertions, 21.28 s wall, 10.83 s user, 2.95 s system.
+These timings record test execution; they are not a controlled performance
+comparison. No speedup is claimed.
+
+ReaderSignal Linux CI [35916802587](https://github.com/kujolang/readersignal/actions/runs/35916802587)
+passed, independently building the pinned corrected runtime. Kujo Linux CI
+35916711263 passed formatting, clippy, minimal smoke and VM/interpreter parity;
+the broader release job then identified stale generated source-line references.
+The authoritative generators refreshed only those inventories and their date.
+Detailed native verification is recorded in Kujo's directory-durability audit.
+
+Final local command:
+`/usr/bin/time -p env KUJO_BIN=/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo bash scripts/validate.sh`.
+Output: `evidence/durability/release-verification.txt`; timing:
+`evidence/durability/release-timing.txt`. The earlier macOS run is preserved as
+`release-before-linux-fix.txt` and `timing-before-linux-fix.txt`.
+
+Native inventory follow-up committed and pushed as
+`b811f24e868b2847917ffbd3259f486a6e18c4ab`. Its isolated generated-artifact
+contract suite passed all three tests. ReaderSignal retains the already-verified
+`d501c2c` runtime pin because the follow-up changes only generated inventories
+and audit evidence, not executable source. Native broad CI rerun:
+https://github.com/kujolang/kujo/actions/runs/35919303004.
+
+The ReaderSignal working tree is dedicated to this task. Concurrent unrelated
+upgrade/release edits appeared in the Kujo shared checkout after implementation;
+they were preserved and excluded from these commits. Inventory verification used
+an isolated checkout so those edits could not contaminate its baseline.

@@ -1,0 +1,64 @@
+from src.storage import initialize, begin_write, recovery_status, recover_record
+from src.core import dispatch
+from src.args import parse_args
+mut passed := 0; mut failed := 0
+func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+root := env_or("READERSIGNAL_TEST_TMP","/tmp") + "/recovery-status-" + uuid_v4()
+opts := parse_args(["--state",root,"--id","snapshot-legacy"],[])
+check(dispatch("recovery-status",opts)["value"]["status"] == "absent" && !file_exists(root),"absent state inspection has no side effects")
+create_dir(root + "/locks")
+write_file(root + "/locks/snapshot-legacy.lock","old writer lock\n",false)
+status := dispatch("recovery-status",opts)
+check(status["ok"] && status["value"]["status"] == "legacy_or_invalid_intent", "legacy text lock classified")
+check(read_file(root + "/locks/snapshot-legacy.lock") == "old writer lock\n" && !file_exists(root + "/guards"), "legacy inspection neither steals nor initializes")
+create_dir(root + "/locks/snapshot-directory.lock")
+check(recovery_status(root,"snapshot-directory")["value"]["status"] == "legacy_or_invalid_intent", "legacy directory lock classified")
+create_dir(root + "/records")
+record := {"id":"snapshot-orphan","actor":"writer","created_at":"2026-09-23T00:00:00Z"}
+write_file(root + "/records/snapshot-orphan.json",to_json(record),false)
+check(recovery_status(root,"snapshot-orphan")["value"]["status"] == "evidence_required" && !file_exists(root + "/history"),"orphan never receives invented history")
+write_file(root + "/records/snapshot-broken.json","{",false)
+check(recovery_status(root,"snapshot-broken")["value"]["issue"] == "malformed_json", "corrupt record diagnostic")
+write_file(root + "/records/snapshot-oversize.json",repeat("x",1048577),false)
+check(recovery_status(root,"snapshot-oversize")["value"]["issue"] == "record_too_large", "oversize inspection bounded")
+check(!recovery_status(root,"../escape")["ok"],"inspection requires safe ID")
+initialize(root,{"tool":"readersignal","contract_version":"1.0.0"})
+record["id"] = "snapshot-live"
+tx := begin_write(root,record)
+journal := read_file(root + "/locks/snapshot-live.lock")
+check(recovery_status(root,"snapshot-live")["value"]["status"] == "replayable", "live intent observable without claiming ownership")
+check(read_file(root + "/locks/snapshot-live.lock") == journal && !file_exists(root + "/records/snapshot-live.json"), "observation preserves live intent")
+file_unlock(tx["handle"])
+check(recover_record(root,"snapshot-live","operator",false)["ok"], "inspected intent still recovers")
+check(recovery_status(root,"snapshot-live")["value"]["status"] == "complete", "complete pair identified")
+record["id"] = "snapshot-conflict"
+tx = begin_write(root,record); file_unlock(tx["handle"])
+write_file(root + "/records/snapshot-conflict.json","{}",false)
+check(recovery_status(root,"snapshot-conflict")["value"]["status"] == "conflicting_evidence", "conflict identified without alteration")
+linked := spawn_process(["ln","-s",root + "/missing",root + "/records/snapshot-link.json"],{"timeout_ms":5000,"max_output_bytes":1024})
+check(linked.exitcode == 0 && recovery_status(root,"snapshot-link")["value"]["issue"] == "unsafe_record", "dangling record not called absent")
+record["id"] = "snapshot-receipt"
+tx = begin_write(root,record); file_unlock(tx["handle"])
+journal_data := parse_json(read_file(root + "/locks/snapshot-receipt.lock"))
+receipt_path := root + "/history/recovered-" + substring(sha256("snapshot-receipt\n" + journal_data["record_sha256"]),0,32) + ".json"
+write_file(receipt_path,"{}",false)
+check(recovery_status(root,"snapshot-receipt")["value"]["status"] == "conflicting_evidence", "status includes recovery receipt preflight")
+check(!file_exists(root + "/records/snapshot-receipt.json"),"receipt conflict inspection publishes nothing")
+// The native API enforces limits on the opened handle, not a prior path stat.
+write_file_atomic_beneath(root,"records/bounded.json","é",false)
+check(read_file_beneath(root,"records/bounded.json",2) == "é", "opened-handle UTF-8 byte bound")
+mut refused := false
+try { read_file_beneath(root,"records/bounded.json",1) } except error { refused = true }
+check(refused,"native read rejects byte overflow")
+refused = false
+try { write_file_atomic_beneath(root,"records/bounded.json","replacement",false) } except error { refused = true }
+check(refused && read_file_beneath(root,"records/bounded.json",2) == "é", "confined publication preserves no-clobber contract")
+linked = spawn_process(["ln","-s",root + "/records",root + "/redirect"],{"timeout_ms":5000,"max_output_bytes":1024})
+refused = false
+try { read_file_beneath(root,"redirect/bounded.json",2) } except error { refused = true }
+check(linked.exitcode == 0 && refused,"native read rejects intermediate symlink")
+refused = false
+try { write_file_atomic_beneath(root,"redirect/new.json","outside",false) } except error { refused = true }
+check(refused && !file_exists(root + "/records/new.json"),"native publication rejects intermediate symlink")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

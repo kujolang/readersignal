@@ -2,7 +2,7 @@ from src.args import parse_args
 from src.common import get, has, canonical_json, parse_object, safe_id, valid_timestamp, find_sensitive_key, bounded_int, envelope, utf8_size, safe_cursor
 from src.profile import profile
 from src.domain import record_type, id_prefix, validate_command
-from src.storage import initialize, save_new, load_record, list_records, validate_state_path, verify_record_history, inspect_state, recover_record
+from src.storage import initialize, save_new, load_record, list_records, validate_state_path, verify_record_history, inspect_state, recover_record, recovery_status
 
 func flag(parsed, name, fallback) {
     if has_key(parsed["flags"], name) == 1 { return parsed["flags"][name] }
@@ -27,7 +27,7 @@ func load_config(path) {
     if path == "" { return {"ok": true, "value": {}} }
     if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "config_not_found", "error": "config must be a regular file"} }
     if file_size(path) > 65536 { return {"ok": false, "code": "config_too_large", "error": "config exceeds 64 KiB"} }
-    config_result := parse_object(read_file(path), "config"); if !config_result["ok"] { return config_result }
+    config_result := parse_object(read_file_beneath(dirname(path),basename(path),65536), "config"); if !config_result["ok"] { return config_result }
     for key in keys(config_result["value"]) { if !has(["state", "actor", "limit"], key) { return {"ok": false, "code": "unknown_config_key", "error": "unknown config key: " + key} } }
     config := config_result["value"]
     if has_key(config, "state") == 1 && (type(config["state"]) != "string" || trim(config["state"]) == "") { return {"ok": false, "code": "invalid_config", "error": "config state must be non-empty text"} }
@@ -47,7 +47,7 @@ func read_payload(parsed) {
     if path == "" { return {"ok": true, "value": {"schema_version": "1.0.0"}} }
     if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "input_not_found", "error": "input must be a regular file"} }
     if file_size(path) > 1048576 { return {"ok": false, "code": "input_too_large", "error": "input exceeds 1 MiB"} }
-    parsed_payload := parse_object(read_file(path), "input"); if !parsed_payload["ok"] { return parsed_payload }
+    parsed_payload := parse_object(read_file_beneath(dirname(path),basename(path),1048576), "input"); if !parsed_payload["ok"] { return parsed_payload }
     payload := parsed_payload["value"]
     schema := get(payload, "schema_version", "1.0.0")
     if type(schema) != "string" || !starts_with(schema, "1.") { return {"ok": false, "code": "incompatible_schema", "error": "input schema major must be 1"} }
@@ -136,6 +136,7 @@ export func dispatch(command, parsed) {
     state := setting(parsed, config, "state", p["default_state"])
     if command == "init" && flag(parsed,"dry-run",false) { checked := inspect_state(state,{"tool":p["slug"],"contract_version":p["contract_version"]}); if !checked["ok"] { return checked }; return {"ok":true,"value":{"state":state,"dry_run":true}} }
     if command == "init" { return initialize(state, {"schema_version": "1.0.0", "tool": p["slug"], "tool_version": p["version"], "contract_version": p["contract_version"], "created_at": now_utc()}) }
+    if command == "recovery-status" { return recovery_status(state,flag(parsed,"id","")) }
     if command == "recover" { return recover_record(state,flag(parsed,"id",""),setting(parsed,config,"actor",""),flag(parsed,"dry-run",false)) }
     if command == "version" { return {"ok": true, "value": {"tool": p["slug"], "version": p["version"], "contract_version": p["contract_version"], "supported_record_versions": get(p, "record_versions", [p["version"]]), "minimum_kujo": p["minimum_kujo"], "minimum_kujo_revision":p["minimum_kujo_revision"]}} }
     if command == "doctor" {
@@ -193,7 +194,7 @@ export func dispatch(command, parsed) {
 }
 
 func usage(p) {
-    return p["name"] + " " + p["version"] + "\n\n" + p["description"] + "\n\nCommands:\n  " + join(p["commands"], "\n  ") + "\n\nCommon flags:\n  --state PATH       Local state directory\n  --config FILE      JSON defaults for state, actor, and limit\n  --input FILE       JSON command payload (1 MiB maximum)\n  --actor ID         Required for mutations\n  --timestamp UTC    Deterministic RFC 3339 timestamp\n  --id ID            Explicit stable record ID (required for recover)\n  --path FILE        Bounded artifact attachment\n  --type TYPE        Record filter for list/export\n  --after ID         Pagination cursor\n  --limit N          1..1000 records\n  --output FILE      Atomic JSON export\n  --force            Replace only an explicitly named safe output\n  --dry-run          Validate without writing\n  --json             Stable output envelope"
+    return p["name"] + " " + p["version"] + "\n\n" + p["description"] + "\n\nCommands:\n  " + join(p["commands"], "\n  ") + "\n\nCommon flags:\n  --state PATH       Local state directory\n  --config FILE      JSON defaults for state, actor, and limit\n  --input FILE       JSON command payload (1 MiB maximum)\n  --actor ID         Required for mutations\n  --timestamp UTC    Deterministic RFC 3339 timestamp\n  --id ID            Explicit stable record ID (required for recover/recovery-status)\n  --path FILE        Bounded artifact attachment\n  --type TYPE        Record filter for list/export\n  --after ID         Pagination cursor\n  --limit N          1..1000 records\n  --output FILE      Atomic JSON export\n  --force            Replace only an explicitly named safe output\n  --dry-run          Validate without writing\n  --json             Stable output envelope"
 }
 
 export func main(argv) {

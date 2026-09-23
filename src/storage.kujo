@@ -36,11 +36,11 @@ func prepare_state(state, metadata, create) {
     if file_exists(path) {
         if path_is_symlink(path) || !path_is_file(path) { return {"ok": false, "code": "unsafe_state", "error": "metadata must be a regular non-symlink file"} }
         if file_size(path) > 65536 { return {"ok": false, "code": "metadata_too_large", "error": "metadata exceeds 64 KiB"} }
-        parsed := parse_object(read_file(path), "state metadata"); if !parsed["ok"] { return parsed }
+        parsed := parse_object(read_file_beneath(state,"metadata.json",65536), "state metadata"); if !parsed["ok"] { return parsed }
         existing := parsed["value"]
         if get(existing, "tool", "") != get(metadata, "tool", "") || get(existing, "contract_version", "") != get(metadata, "contract_version", "") { return {"ok": false, "code": "incompatible_state", "error": "state metadata belongs to an incompatible tool or contract"} }
     } else if create {
-        try { write_file_atomic(path, to_json_pretty(metadata) + "\n", false) } except error {
+        try { write_file_atomic_beneath(state,"metadata.json", to_json_pretty(metadata) + "\n", false) } except error {
             if path_is_file(path) { return prepare_state(state, metadata, false) }
             return {"ok": false, "code": "write_failed", "error": "atomic metadata creation failed"}
         }
@@ -97,7 +97,7 @@ export func begin_write(state, record) {
         else if file_exists(record_path(state,id)) { result = storage_error("duplicate_id","record already exists: " + id) }
         else if file_exists(event_path_for(state,record)) { result = storage_error("history_conflict","audit history event already exists") }
         else {
-            write_file_atomic(lock_path(state,id),to_json(journal) + "\n",false)
+            write_file_atomic_beneath(state,"locks/" + id + ".lock",to_json(journal) + "\n",false)
             result = {"ok":true,"handle":guard["handle"],"id":id,"checksum":checksum}
         }
     } except error { result = storage_error("write_failed","could not persist write intent: " + to_string(error)) }
@@ -109,7 +109,7 @@ func load_intent(state, id) {
     path := lock_path(state,id)
     if !path_is_file(path) || path_is_symlink(path) { return storage_error("recovery_unavailable","no regular journal; legacy locks require offline review") }
     if file_size(path) > 3145728 { return storage_error("journal_too_large","journal exceeds 3 MiB") }
-    parsed := parse_object(read_file(path),"write intent")
+    parsed := parse_object(read_file_beneath(state,"locks/" + id + ".lock",3145728),"write intent")
     if !parsed["ok"] { return storage_error("invalid_journal","legacy or malformed intent; no files changed") }
     journal := parsed["value"]
     if get(journal,"journal_version","") != "1.0.0" || get(journal,"record_id","") != id || type(get(journal,"record_text",null)) != "string" || type(get(journal,"event_text",null)) != "string" { return storage_error("invalid_journal","incompatible journal identity or shape") }
@@ -123,7 +123,8 @@ func load_intent(state, id) {
     return {"ok":true,"journal":journal,"record_path":record_path(state,id),"event_path":event_path_for(state,record)}
 }
 
-func check_target(path, expected, maximum) {
+func check_target(state, relative, expected, maximum) {
+    path := join_path(state,relative)
     // symlink inspection must also reject dangling links, for which file_exists
     // follows the target and returns false.
     mut link := false
@@ -131,22 +132,22 @@ func check_target(path, expected, maximum) {
     if link { return storage_error("recovery_conflict","recovery target is a symlink") }
     if !file_exists(path) { return {"ok":true,"missing":true} }
     if !path_is_file(path) || file_size(path) > maximum { return storage_error("recovery_conflict","recovery target is not a bounded regular file") }
-    if read_file(path) != expected { return storage_error("recovery_conflict","existing evidence differs from journal; no files changed") }
+    if read_file_beneath(state,relative,maximum) != expected { return storage_error("recovery_conflict","existing evidence differs from journal; no files changed") }
     return {"ok":true,"missing":false}
 }
 
 func commit_intent(state, id, dry_run, recovery_actor) {
     intent := load_intent(state,id); if !intent["ok"] { return intent }
     journal := intent["journal"]
-    record := check_target(intent["record_path"],journal["record_text"],1048576)
-    event := check_target(intent["event_path"],journal["event_text"],65536)
+    record := check_target(state,"records/" + id + ".json",journal["record_text"],1048576)
+    event := check_target(state,"history/" + basename(intent["event_path"]),journal["event_text"],65536)
     if !record["ok"] { return record }; if !event["ok"] { return event }
     receipt_path := ""; receipt_missing := false
     if recovery_actor != "" {
         receipt_path = join_path(history_dir(state),"recovered-" + substring(sha256(id + "\n" + journal["record_sha256"]),0,32) + ".json")
         if file_exists(receipt_path) {
             if !path_is_file(receipt_path) || path_is_symlink(receipt_path) || file_size(receipt_path) > 65536 { return storage_error("recovery_conflict","unsafe existing recovery receipt") }
-            parsed := parse_object(read_file(receipt_path),"recovery receipt")
+            parsed := parse_object(read_file_beneath(state,"history/" + basename(receipt_path),65536),"recovery receipt")
             if !parsed["ok"] { return storage_error("recovery_conflict","invalid recovery receipt; intent retained") }
             receipt := parsed["value"]
             if get(receipt,"schema_version","") != "1.0.0" || get(receipt,"event","") != "record.recovered" || get(receipt,"record_id","") != id || get(receipt,"record_sha256","") != journal["record_sha256"] || type(get(receipt,"actor",null)) != "string" || trim(receipt["actor"]) == "" || !valid_timestamp(get(receipt,"at",null)) { return storage_error("recovery_conflict","recovery receipt differs; no files changed") }
@@ -158,9 +159,9 @@ func commit_intent(state, id, dry_run, recovery_actor) {
         }
     }
     if dry_run { return {"ok":true,"value":{"id":id,"dry_run":true,"record_missing":record["missing"],"event_missing":event["missing"]}} }
-    if record["missing"] { write_file_atomic(intent["record_path"],journal["record_text"],false) }
-    if event["missing"] { write_file_atomic(intent["event_path"],journal["event_text"],false) }
-    if receipt_missing { write_file_atomic(receipt_path,to_json({"schema_version":"1.0.0","event":"record.recovered","record_id":id,"record_sha256":journal["record_sha256"],"actor":recovery_actor,"at":now_utc()}) + "\n",false) }
+    if record["missing"] { write_file_atomic_beneath(state,"records/" + id + ".json",journal["record_text"],false) }
+    if event["missing"] { write_file_atomic_beneath(state,"history/" + basename(intent["event_path"]),journal["event_text"],false) }
+    if receipt_missing { write_file_atomic_beneath(state,"history/" + basename(receipt_path),to_json({"schema_version":"1.0.0","event":"record.recovered","record_id":id,"record_sha256":journal["record_sha256"],"actor":recovery_actor,"at":now_utc()}) + "\n",false) }
     delete_file(lock_path(state,id))
     return {"ok":true,"value":{"path":intent["record_path"],"checksum":journal["record_sha256"],"id":id,"recovered":recovery_actor != ""}}
 }
@@ -199,13 +200,54 @@ export func recover_record(state, id, actor, dry_run) {
     return result
 }
 
+// An observation, never authority to remove a lock or synthesize an event.
+// Unlike recover --dry-run, this works on legacy state without creating guards.
+export func recovery_status(state, id) {
+    if !safe_id(id) { return storage_error("unsafe_id","recovery-status requires a safe --id") }
+    error := validate_state_path(state); if error != "" { return storage_error("unsafe_state",error) }
+    for dir in [records_dir(state),history_dir(state),locks_dir(state),guards_dir(state)] {
+        mut link := false; try { link = path_is_symlink(dir) } except error { link = false }
+        if link || (file_exists(dir) && !path_is_dir(dir)) { return storage_error("unsafe_state","managed paths must be regular directories") }
+    }
+    mut status := "absent"; mut issue := ""; mut record_ok := false; mut history_ok := false
+    mut journal_ok := false
+    loaded := load_record(state,id)
+    if loaded["ok"] {
+        record_ok = true
+        try {
+            verified := verify_record_history(state,loaded["value"],loaded["checksum"])
+            history_ok = verified["ok"]
+            if !history_ok { issue = verified["code"] }
+        } except error { issue = "invalid_record_identity" }
+        if history_ok { status = "complete" } else { status = "evidence_required" }
+    } else if loaded["code"] != "not_found" { status = "evidence_required"; issue = loaded["code"] }
+    mut record_link := false; try { record_link = path_is_symlink(record_path(state,id)) } except error { record_link = false }
+    if record_link || (file_exists(record_path(state,id)) && !path_is_file(record_path(state,id))) { status = "evidence_required"; issue = "unsafe_record" }
+    if intent_exists(state,id) {
+        status = "legacy_or_invalid_intent"
+        try {
+            preview := commit_intent(state,id,true,"status-inspection")
+            if preview["ok"] { journal_ok = true; status = "replayable"; issue = "" }
+            else {
+                issue = preview["code"]
+                if issue == "recovery_conflict" { journal_ok = true; status = "conflicting_evidence" }
+            }
+        } except error { issue = "intent_read_failed" }
+    }
+    return {"ok":true,"value":{"id":id,"status":status,"issue":issue,"journal_valid":journal_ok,"record_readable":record_ok,"history_valid":history_ok,"observation_only":true}}
+}
+
 func read_record(state, id, checksum) {
     if !safe_id(id) { return {"ok": false, "code": "unsafe_id", "error": "unsafe record id"} }
     path := record_path(state, id)
     if !path_is_file(path) || path_is_symlink(path) { return {"ok": false, "code": "not_found", "error": "record not found: " + id} }
     size := file_size(path)
     if size > 1048576 { return {"ok": false, "code": "record_too_large", "error": "record exceeds 1 MiB"} }
-    contents := read_file(path); mut record := null
+    mut contents := ""
+    try { contents = read_file_beneath(state,"records/" + id + ".json",1048576) }
+    except error { return storage_error("record_read_failed","bounded record read failed: " + id) }
+    size = utf8_size(contents)
+    mut record := null
     try { record = parse_json(contents) } except error { return {"ok":false,"code":"malformed_json","error":"record " + id + " is not valid JSON"} }
     if type(record) != "dict" { return {"ok":false,"code":"invalid_shape","error":"record " + id + " must be a JSON object"} }
     if has_key(record,"id") == 0 || record["id"] != id { return {"ok": false, "code": "id_mismatch", "error": "record id does not match filename"} }
@@ -250,7 +292,7 @@ export func verify_record_history(state, record, checksum) {
     path := join_path(dir, substring(sha256(record["created_at"] + "\n" + record["id"]), 0, 32) + ".json")
     if !path_is_file(path) || path_is_symlink(path) { return {"ok":false,"code":"history_missing","error":"record audit event is missing or unsafe"} }
     if file_size(path) > 65536 { return {"ok":false,"code":"history_too_large","error":"audit event exceeds 64 KiB"} }
-    parsed := parse_object(read_file(path), "audit event"); if !parsed["ok"] { return parsed }; event := parsed["value"]
+    parsed := parse_object(read_file_beneath(state,"history/" + basename(path),65536), "audit event"); if !parsed["ok"] { return parsed }; event := parsed["value"]
     if get(event,"schema_version","") != "1.0.0" || get(event,"event","") != "record.created" || get(event,"record_id","") != record["id"] || get(event,"actor","") != record["actor"] || get(event,"at","") != record["created_at"] || get(event,"record_sha256","") != checksum { return {"ok":false,"code":"history_mismatch","error":"record does not match its audit event"} }
     return {"ok":true}
 }

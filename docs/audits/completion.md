@@ -1,3 +1,6 @@
+> Superseding durability and backup implementation: [current contract](durability-and-backups.md).
+> Earlier runtime blockers below describe the historical baseline.
+
 # ReaderSignal remaining-work review — 2026-09-23
 
 Repository: `kujolang/readersignal`, branch `main`. Starting SHA:

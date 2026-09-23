@@ -28,12 +28,12 @@ and no-clobber semantics also remain in force.
 journal fields and existing evidence, publishes only missing exact journal bytes,
 appends a `record.recovered` receipt, and clears the intent last. Repeating recovery
 is safe; conflicting, malformed or legacy journals fail closed. `--dry-run`
-performs validation without publishing or deleting files. An ordinary I/O failure
-now retains the intent for recovery instead of deleting a newly published record.
+performs validation without publishing or deleting files. Failures before cleanup retain the intent. A failure confirming cleanup can
+leave it absent; completed-pair recovery validates evidence and repeats barriers.
 
-This protocol covers process termination. Atomic file publication does not promise
-cross-file durability after power loss: the current runtime does not expose the
-parent-directory synchronization contract needed for that guarantee. Keep backups.
+The protocol now syncs directory entries between publication phases and after
+cleanup using the pinned Kujo barrier. Its power-loss ordering depends on storage
+honoring successful sync; it does not certify arbitrary hardware. Keep backups.
 Legacy unjournaled orphan records/locks require offline evidence review; the tool
 does not reconstruct an original creation event from an unsupported assumption.
 
@@ -41,3 +41,11 @@ Queries process at most 1,000 candidates and retain at most 4 MiB of record sour
 bytes per page. Warnings count toward the candidate bound. Directory enumeration uses a native bounded heap of at most 1,001 matching names.
 It still scans all directory entries on each page (O(N) time), but name-buffer
 memory is independent of directory size.
+
+## Durability and trusted backups
+
+The previous runtime directory-sync blocker is resolved by the pinned Kujo
+barrier. See [durable publication and restore](audits/durability-and-backups.md)
+for ordered writes, uncertain outcomes, runtime requirements and trusted-backup
+restoration. Successful sync depends on the deployment storage honoring the OS
+contract; this does not guarantee arbitrary hardware or network-filesystem behavior.

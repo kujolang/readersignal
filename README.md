@@ -15,9 +15,9 @@ See the [production review](docs/PRODUCTION_READINESS_REVIEW.md) and completed [
 
 ## Quick install
 
-Requires POSIX Kujo 1.4.0 with `file_lock` and `list_dir_page`: revision
-`cf785c0a7953717af16b657cda05b85d628144c5` (the CI pin) or a compatible newer
-build. Version 1.4.0 alone does not identify these preview APIs.
+Requires POSIX Kujo 1.5.0 with locking, bounded paging and `sync_directory_beneath`: revision
+`f76515258d7ae88b1468536f99599e878eee1b60` (the CI pin) or a compatible newer
+build. Version 1.5.0 alone does not identify these preview APIs.
 
 ```bash
 git clone https://github.com/kujolang/readersignal.git
@@ -77,3 +77,9 @@ review; recovery never invents missing historical evidence. See
 [recovery and paging](docs/recovery-and-paging.md) for upgrade and failure semantics.
 
 For read-only legacy recovery diagnosis, use `readersignal recovery-status --state PATH --id ID --json`. See the [remaining-work review](docs/audits/completion.md) for safe restore procedures and durability boundaries.
+
+Use `backup --state PATH --id ID --output FILE` to preserve an original record/event
+pair and `restore --state NEW_STATE --id ID --input FILE --actor ID` to restore
+trusted evidence without altering damaged state. Both support `--dry-run`.
+See [durability and backups](docs/audits/durability-and-backups.md) for the required
+POSIX Kujo revision and verification/uncertain-outcome semantics.

@@ -36,7 +36,7 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
 
 ## Journal recovery and runtime upgrade (2026-09-22 follow-up)
 
-- Requires POSIX Kujo revision `cf785c0a7953717af16b657cda05b85d628144c5`
+- Requires POSIX Kujo revision `f76515258d7ae88b1468536f99599e878eee1b60`
   or compatible newer runtime; `version`/`doctor` expose `minimum_kujo_revision`.
 - `recover --id ID --actor OPERATOR [--dry-run]` is additive. Immutable record and
   creation-event formats remain unchanged. New additive `record.recovered` events
@@ -62,3 +62,12 @@ exit means the observation succeeded; inspect `data.status` and use `validate`
 for a health gate. See [the completion review](audits/completion.md). Managed
 reads now enforce byte limits on opened handles; concurrent read failures may
 return `record_read_failed` without dropping the rest of a list page.
+
+## Directory durability and evidence checkpoints
+
+`backup --id ID --output FILE` preserves an exact original record/event pair.
+`restore --id ID --input FILE --actor ID` restores it without overwriting evidence.
+The commands, checkpoint format, 4 MiB restore input bound, new runtime pin and
+`durability_unconfirmed` phase receipt are specified in
+[durability and backups](audits/durability-and-backups.md). Existing record and
+configuration formats are unchanged.

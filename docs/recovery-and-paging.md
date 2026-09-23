@@ -1,3 +1,6 @@
+> Superseding durability and backup implementation: [current contract](audits/durability-and-backups.md).
+> Earlier runtime blockers below describe the historical baseline.
+
 # Process-crash recovery and bounded directory enumeration
 
 This follow-up closes the original audit's RS-13 process-crash recovery gap for

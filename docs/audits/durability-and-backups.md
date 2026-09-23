@@ -26,7 +26,7 @@ crash boundaries; `tests/backup_test.kujo` adds round-trip and rejection coverag
 ## Runtime requirement and publication protocol
 
 Use POSIX Kujo 1.5.0 at revision
-`f76515258d7ae88b1468536f99599e878eee1b60` or a compatible newer build. CI builds
+`d501c2c46c51718ee10c4434f6cf9750bbd81453` or a compatible newer build. CI builds
 that exact source with `--locked`. `sync_directory_beneath(root, relative)` is a
 filesystem-write capability operation; it returns true only after the OS confirms
 sync of the opened directory. It rejects symlinks below its trusted root. It is
@@ -178,3 +178,15 @@ lacked the barrier. The build was restarted with a repository-local log at
 `kujo/.tmp/directory-durability/release-build.txt`. The completed debug-runtime
 gate above is the current verified result; release-runtime receipt follows when
 the rebuilt binary passes capability probing and the same gate.
+
+
+### Linux portability correction
+
+Kujo CI run 35912612913 exposed that its traversal capability may use a Linux
+`O_PATH` descriptor, which cannot be fsynced. ReaderSignal's first pinned Linux
+run 35915557080 also failed at the new barrier. Kujo fix
+`d501c2c46c51718ee10c4434f6cf9750bbd81453` reopens `.` for reading relative to
+the retained directory, without reopening an ambient path; ReaderSignal now pins
+that correction. The existing nested-directory regression stays enabled.
+The macOS release gate at the earlier revision passed 218 checks in 26.70 s;
+this is not evidence of Linux correctness. Corrected-revision receipts follow.

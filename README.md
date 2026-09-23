@@ -16,7 +16,7 @@ See the [production review](docs/PRODUCTION_READINESS_REVIEW.md) and completed [
 ## Quick install
 
 Requires POSIX Kujo 1.5.0 with locking, bounded paging and `sync_directory_beneath`: revision
-`f76515258d7ae88b1468536f99599e878eee1b60` (the CI pin) or a compatible newer
+`d501c2c46c51718ee10c4434f6cf9750bbd81453` (the CI pin) or a compatible newer
 build. Version 1.5.0 alone does not identify these preview APIs.
 
 ```bash

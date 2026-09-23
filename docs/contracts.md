@@ -36,7 +36,7 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
 
 ## Journal recovery and runtime upgrade (2026-09-22 follow-up)
 
-- Requires POSIX Kujo revision `f76515258d7ae88b1468536f99599e878eee1b60`
+- Requires POSIX Kujo revision `d501c2c46c51718ee10c4434f6cf9750bbd81453`
   or compatible newer runtime; `version`/`doctor` expose `minimum_kujo_revision`.
 - `recover --id ID --actor OPERATOR [--dry-run]` is additive. Immutable record and
   creation-event formats remain unchanged. New additive `record.recovered` events

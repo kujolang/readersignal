@@ -21,6 +21,7 @@ export READERSIGNAL_TEST_TMP="$tmp_state"
 "$KUJO_RUNTIME" run tests/cli_test.kujo -- "$KUJO_RUNTIME"
 "$KUJO_RUNTIME" run tests/recovery_test.kujo -- "$KUJO_RUNTIME"
 "$KUJO_RUNTIME" run tests/recovery_status_test.kujo
+"$KUJO_RUNTIME" run tests/backup_test.kujo
 documents=()
 while IFS= read -r document; do documents+=("$document"); done < <(find fixtures schemas -type f -name '*.json' -print | sort)
 "$KUJO_RUNTIME" run scripts/validate_json.kujo -- "${documents[@]}"

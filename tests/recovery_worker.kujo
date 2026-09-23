@@ -4,8 +4,19 @@ record := {"schema_version":"1.0.0","tool_version":"0.2.0","contract_version":"1
 tx := begin_write(root,record)
 if !tx["ok"] { eprint(to_json(tx)); exit(1) }
 journal := parse_json(read_file(root + "/locks/snapshot-crash.lock"))
-if stage == "record" || stage == "event" { write_file_atomic(root + "/records/snapshot-crash.json",journal["record_text"],false) }
-if stage == "event" { write_file_atomic(root + "/history/" + substring(sha256(record["created_at"] + "\n" + record["id"]),0,32) + ".json",journal["event_text"],false) }
+if stage != "intent" { write_file_atomic(root + "/records/snapshot-crash.json",journal["record_text"],false) }
+if stage != "intent" && stage != "record" { sync_directory_beneath(root,"records") }
+if stage != "intent" && stage != "record" && stage != "record-synced" {
+    write_file_atomic(root + "/history/" + substring(sha256(record["created_at"] + "\n" + record["id"]),0,32) + ".json",journal["event_text"],false)
+    if stage != "event" { sync_directory_beneath(root,"history") }
+}
+if stage == "receipt-synced" || stage == "intent-deleted" || stage == "cleanup-synced" {
+    receipt_path := root + "/history/recovered-" + substring(sha256("snapshot-crash\n" + journal["record_sha256"]),0,32) + ".json"
+    write_file_atomic(receipt_path,to_json({"schema_version":"1.0.0","event":"record.recovered","record_id":"snapshot-crash","record_sha256":journal["record_sha256"],"actor":"recovery-worker","at":"2026-09-23T00:00:00Z"}),false)
+    sync_directory_beneath(root,"history")
+}
+if stage == "intent-deleted" || stage == "cleanup-synced" { delete_file(root + "/locks/snapshot-crash.lock") }
+if stage == "cleanup-synced" { sync_directory_beneath(root,"locks") }
 // Terminate this Kujo writer with SIGKILL while it owns the native lock.
 // This is a fixed test command, not production input or an environment hook.
 spawn_process(["sh","-c","kill -KILL \"$PPID\""],{"timeout_ms":5000,"max_output_bytes":1024})

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReaderSignal evidence checkpoint envelope",
+  "description": "At most 4 MiB UTF-8. One original record and its creation event; not a full-state or attachment backup. Trusted provenance is external to the checksum.",
+  "type": "object",
+  "required": ["ok", "contract_version", "data"],
+  "properties": {
+    "ok": {"const": true},
+    "contract_version": {"const": "1.0.0"},
+    "data": {
+      "allOf": [
+        {"$ref": "write-intent.schema.json"},
+        {"type": "object", "required": ["backup_version"], "properties": {"backup_version": {"const": "1.0.0"}}}
+      ]
+    }
+  }
+}

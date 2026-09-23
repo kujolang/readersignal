@@ -1,0 +1,60 @@
+from src.core import dispatch
+from src.args import parse_args
+from src.storage import recover_record
+mut passed := 0; mut failed := 0
+func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1; eprint("FAIL: " + label) } }
+func opts(v) { return parse_args(v,["json","dry-run","force"]) }
+base := env_or("READERSIGNAL_TEST_TMP","/tmp") + "/backup-" + uuid_v4()
+create_dir(base)
+source := base + "/source"; target := base + "/restored"; backup := base + "/snapshot.backup.json"
+created := dispatch("snapshot",opts(["--state",source,"--id","snapshot-backup","--actor","original","--timestamp","2026-09-23T00:00:00Z","--input","fixtures/core.json"]))
+check(created["ok"],"source record created")
+record_path := source + "/records/snapshot-backup.json"
+record_text := read_file(record_path)
+event_name := substring(sha256("2026-09-23T00:00:00Z\nsnapshot-backup"),0,32) + ".json"
+event_text := read_file(source + "/history/" + event_name)
+preview := dispatch("backup",opts(["--state",source,"--id","snapshot-backup","--output",backup,"--dry-run"]))
+check(preview["ok"] && !file_exists(backup),"backup preview writes nothing")
+check(dispatch("backup",opts(["--state",source,"--id","snapshot-backup","--output",backup]))["ok"],"backup publishes checkpoint")
+check(!dispatch("backup",opts(["--state",source,"--id","snapshot-backup","--output",backup,"--force"]))["ok"],"backup refuses replacement")
+check(!dispatch("backup",opts(["--state",source,"--id","snapshot-backup","--output",source + "/checkpoint.json"]))["ok"],"backup excluded from managed state")
+preview = dispatch("restore",opts(["--state",target,"--id","snapshot-backup","--actor","restorer","--input",backup,"--dry-run"]))
+check(preview["ok"] && !file_exists(target),"restore preflight does not initialize")
+restored := dispatch("restore",opts(["--state",target,"--id","snapshot-backup","--actor","restorer","--input",backup]))
+check(restored["ok"],"restore publishes and syncs evidence")
+check(read_file(target + "/records/snapshot-backup.json") == record_text && read_file(target + "/history/" + event_name) == event_text,"exact original bytes preserved")
+check(dispatch("validate",opts(["--state",target,"--id","snapshot-backup"]))["ok"],"restored record passes domain and history validation")
+check(len(list_dir(target + "/history")) == 2 && len(list_dir(target + "/locks")) == 0,"restore audited before intent cleanup")
+check(!dispatch("restore",opts(["--state",target,"--id","snapshot-backup","--actor","restorer","--input",backup]))["ok"],"restore never overwrites evidence")
+check(recover_record(target,"snapshot-backup","retry",false)["value"]["already_complete"],"completed restore recovery is idempotent")
+// The source can be damaged after checkpoint creation; restoring never alters it.
+delete_file(source + "/history/" + event_name)
+check(!dispatch("backup",opts(["--state",source,"--id","snapshot-backup","--output",base + "/bad.json"]))["ok"],"missing original history cannot be backed up")
+second := base + "/second"
+check(dispatch("restore",opts(["--state",second,"--id","snapshot-backup","--actor","restorer","--input",backup]))["ok"] && !file_exists(source + "/history/" + event_name),"trusted checkpoint restores separately from damaged source")
+body := parse_json(read_file(backup)); evidence := body["data"]; evidence["record_sha256"] = repeat("0",64); body["data"] = evidence
+bad_backup := base + "/tampered.json"; write_file(bad_backup,to_json(body),false)
+absent := base + "/absent"
+check(!dispatch("restore",opts(["--state",absent,"--id","snapshot-backup","--actor","restorer","--input",bad_backup]))["ok"] && !file_exists(absent),"checksum mismatch rejected before target creation")
+check(!dispatch("restore",opts(["--state",absent,"--id","snapshot-other","--actor","restorer","--input",backup]))["ok"] && !file_exists(absent),"backup identity mismatch rejected")
+check(!dispatch("restore",opts(["--state",absent,"--id","snapshot-backup","--input",backup]))["ok"] && !file_exists(absent),"restore actor required")
+check(!dispatch("restore",opts(["--state",absent,"--id","../escape","--actor","restorer","--input",backup]))["ok"],"restore traversal rejected")
+legacy_target := base + "/legacy-target"
+dispatch("init",opts(["--state",legacy_target]))
+write_file(legacy_target + "/locks/snapshot-backup.lock","legacy writer",false)
+check(!dispatch("restore",opts(["--state",legacy_target,"--id","snapshot-backup","--actor","restorer","--input",backup]))["ok"] && read_file(legacy_target + "/locks/snapshot-backup.lock") == "legacy writer", "restore cannot steal legacy locks")
+link_target := base + "/link-target"
+dispatch("init",opts(["--state",link_target]))
+linked := spawn_process(["ln","-s",base + "/missing",link_target + "/records/snapshot-backup.json"],{"timeout_ms":5000,"max_output_bytes":1024})
+check(linked.exitcode == 0 && !dispatch("restore",opts(["--state",link_target,"--id","snapshot-backup","--actor","restorer","--input",backup,"--dry-run"]))["ok"], "restore preview rejects dangling destinations")
+// Re-serialization would lose both historical bytes and the bound digest.
+original := parse_json(read_file(backup)); original_data := original["data"]
+original_data["record_text"] = "  " + original_data["record_text"]
+original_data["record_sha256"] = sha256(original_data["record_text"])
+original_event := parse_json(original_data["event_text"]); original_event["record_sha256"] = original_data["record_sha256"]
+original_data["event_text"] = "  " + to_json(original_event) + "\n"; original["data"] = original_data
+format_backup := base + "/format.json"; write_file(format_backup,to_json(original),false)
+format_target := base + "/format-target"
+check(dispatch("restore",opts(["--state",format_target,"--id","snapshot-backup","--actor","restorer","--input",format_backup]))["ok"] && read_file(format_target + "/records/snapshot-backup.json") == original_data["record_text"] && read_file(format_target + "/history/" + event_name) == original_data["event_text"], "restore preserves noncanonical original serialization")
+print(to_string(passed) + " passed; " + to_string(failed) + " failed")
+if failed > 0 { exit(1) }

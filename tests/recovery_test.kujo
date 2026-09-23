@@ -6,17 +6,19 @@ func check(ok,label) { if ok { passed = passed + 1 } else { failed = failed + 1;
 func opts(v) { return parse_args(v,["json","dry-run","force"]) }
 runtime := args()[0]
 base := env_or("READERSIGNAL_TEST_TMP","/tmp") + "/readersignal-recovery-" + uuid_v4()
-for stage in ["intent","record","event"] {
+for stage in ["intent","record","record-synced","event","event-synced","receipt-synced","intent-deleted","cleanup-synced"] {
     root := base + "-" + stage
     check(dispatch("init",opts(["--state",root]))["ok"], "init crash fixture " + stage)
     killed := spawn_process([runtime,"run","tests/recovery_worker.kujo","--",root,stage],{"timeout_ms":10000,"max_output_bytes":4096})
-    check(killed.exitcode != 0 && file_exists(root + "/locks/snapshot-crash.lock"), "writer killed with intent " + stage)
-    before := read_file(root + "/locks/snapshot-crash.lock")
+    pending := stage != "intent-deleted" && stage != "cleanup-synced"
+    check(killed.exitcode != 0 && file_exists(root + "/locks/snapshot-crash.lock") == pending, "writer killed at boundary " + stage)
+    before := ""; if pending { before = read_file(root + "/locks/snapshot-crash.lock") }
     preview := recover_record(root,"snapshot-crash","recovery-operator",true)
-    check(preview["ok"] && read_file(root + "/locks/snapshot-crash.lock") == before, "preview preserves intent " + stage)
+    after := ""; if pending { after = read_file(root + "/locks/snapshot-crash.lock") }
+    check(preview["ok"] && after == before && file_exists(root + "/locks/snapshot-crash.lock") == pending, "preview preserves intent " + stage)
     check(file_exists(root + "/records/snapshot-crash.json") == (stage != "intent"), "preview preserves record state " + stage)
     recovered := spawn_process([runtime,"run","readersignal.kujo","--","recover","--state",root,"--id","snapshot-crash","--actor","recovery-operator","--json"],{"timeout_ms":10000,"max_output_bytes":4096})
-    check(recovered.exitcode == 0 && parse_json(recovered.stdout)["data"]["recovered"], "CLI recovers killed writer " + stage)
+    check(recovered.exitcode == 0 && parse_json(recovered.stdout)["data"]["recovered"] == pending, "CLI recovers killed writer " + stage)
     check(dispatch("validate",opts(["--state",root,"--id","snapshot-crash"]))["ok"], "recovered pair validates " + stage)
     check(!file_exists(root + "/locks/snapshot-crash.lock") && len(list_dir(root + "/history")) == 2, "intent cleared and recovery audited " + stage)
     check(recover_record(root,"snapshot-crash","retry",false)["value"]["already_complete"], "repeat recovery idempotent " + stage)

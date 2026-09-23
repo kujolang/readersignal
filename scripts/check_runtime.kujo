@@ -3,12 +3,13 @@ if root == "" { eprint("runtime check requires isolated test scratch directory")
 try {
     guard := file_lock(root + "/runtime-probe.guard",0)
     file_unlock(guard)
+    sync_directory_beneath(root,".")
     page := list_dir_page(root,"",1,".guard")
     if page["buffered_entries"] > 2 { eprint("native directory bound violated"); exit(1) }
     write_file_atomic_beneath(root,"probe/data","bounded",false)
     if read_file_beneath(root,"probe/data",7) != "bounded" { exit(1) }
     delete_file(root + "/runtime-probe.guard")
 } except error {
-    eprint("ReaderSignal requires POSIX Kujo 1.4.0 revision cf785c0a7953717af16b657cda05b85d628144c5 or a compatible newer build: " + to_string(error))
+    eprint("ReaderSignal requires POSIX Kujo 1.5.0 revision f76515258d7ae88b1468536f99599e878eee1b60 or a compatible newer build: " + to_string(error))
     exit(1)
 }

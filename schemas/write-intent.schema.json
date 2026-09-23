@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ReaderSignal process-crash recovery intent",
+  "title": "ReaderSignal replayable write intent",
   "description": "At most 3 MiB UTF-8 on disk. Record text and event text are additionally bounded to 1 MiB and 64 KiB UTF-8; runtime validates embedded identity and checksums.",
   "type": "object",
   "required": ["journal_version", "record_id", "record_text", "record_sha256", "event_text"],

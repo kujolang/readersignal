@@ -1,3 +1,5 @@
+> Latest verification and remaining evidence requirement: [2026-09-25 follow-up](durability-follow-up.md).
+
 # Durable publication and trusted evidence restore
 
 Repository: `kujolang/readersignal`, branch `main`. Starting SHA:

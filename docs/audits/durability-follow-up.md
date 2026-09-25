@@ -26,9 +26,26 @@ neither correction changes executable behavior.
 - `git diff --check`: passed before both commits.
 - `KUJO_BIN=/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo bash scripts/validate.sh`: 218 assertions passed again.
 
-Full native `cargo test` and the new Linux CI run 36131352261 were started to
-verify beyond the previously failing contracts. Their terminal receipts will
-be appended after completion; this report does not claim either has passed yet.
+The first full native run then found a second reference omission:
+`docs/STANDARD_LIBRARY_REFERENCE.md` did not list the new builtin. Added its
+preview row plus capability, trusted-root, failure and sync-guarantee semantics;
+commit `719d6f7`. Both standard-library contract suites now pass (7 cases).
+
+The corrected full `cargo test` completed successfully: 2,724 passed, zero failed,
+15 existing ignored, across 83 suite summaries (including library tests compiled
+for both library and CLI targets; this is not a unique-test count). The unchanged
+freshness, standard-library and workflow-reference contracts all pass.
+`bash scripts/repo_hygiene_audit.sh` and `cargo fmt --check` also passed.
+Full test evidence: `evidence/durability/native-full-tests-20260925.txt`.
+
+`cargo run -- test` also passed all 154 runnable fixtures (6 skipped), with no
+interpreter fallback. Its five generated probe `.out` files were removed after
+verification; the Kujo working tree is clean. Evidence:
+`evidence/durability/native-language-tests-20260925.txt`.
+
+Latest Linux rerun: 36131941147 at `719d6f7`. Formatting, clippy, MSRV,
+VM/interpreter parity and minimal smoke all passed; the final broad release-gate
+job is queued. Its success is not yet claimed.
 
 ## Historical evidence constraint
 
@@ -46,3 +63,7 @@ Merged the CI diagnosis and fixes into existing Strata Agent Notes handoff
 search `ReaderSignal directory sync arity CI backup evidence` both returned the
 updated handoff. No duplicate note or SignalBox capture was created: the two
 confirmed defects are fixed, and pending verification is not a capture candidate.
+
+The same Strata handoff was advanced to revision 5 with the second reference fix
+and full Rust suite result; exact and conceptual retrieval passed. The terminal
+language-runner receipt supersedes its previously pending local-run status.

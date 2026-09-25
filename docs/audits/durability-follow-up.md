@@ -45,7 +45,7 @@ verification; the Kujo working tree is clean. Evidence:
 
 Latest Linux rerun: 36131941147 at `719d6f7`. Formatting, clippy, MSRV,
 VM/interpreter parity and minimal smoke all passed; the final broad release-gate
-job is queued. Its success is not yet claimed.
+job is running (job 108062996557). Its success is not yet claimed.
 
 ## Historical evidence constraint
 
@@ -67,3 +67,20 @@ confirmed defects are fixed, and pending verification is not a capture candidate
 The same Strata handoff was advanced to revision 5 with the second reference fix
 and full Rust suite result; exact and conceptual retrieval passed. The terminal
 language-runner receipt supersedes its previously pending local-run status.
+
+## Required operator input
+
+Across three goal turns, the damaged-state and trusted-backup paths remain
+unspecified. No local live ReaderSignal state was identified in the repository.
+All currently identified code/documentation fixes are committed and the full local
+suites pass. Actual historical restoration cannot proceed until the operator
+supplies those paths or confirms there is no live legacy dataset to restore.
+The final Linux gate is independently running; resume by reading existing run
+36131941147 rather than restarting it, and inspect any terminal failure before
+claiming full CI completion. Goal completion is not claimed.
+
+Strata handoff `41a2b2ad-dff9-423a-9bab-af0a7d57c207`, revision 6, now records
+the passing language runner and exact resume job plus the missing operator input.
+Exact retrieval and conceptual search both passed. No duplicate note or SignalBox
+Capture/Signal was created. The local CI observer was stopped; the remote GitHub
+job was not canceled.

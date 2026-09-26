@@ -19,3 +19,7 @@ entry = "readersignal.kujo"
 sources = ["readersignal.kujo", "src"]
 includes = ["bin", "schemas", "fixtures", "docs", "scripts", "tests", "README.md", "CHANGELOG.md", "VERSION", "kujo.toml"]
 excludes = [".git", ".tmp", ".readersignal", "node_modules", "output", "dist"]
+
+[dependencies]
+
+[dev-dependencies]

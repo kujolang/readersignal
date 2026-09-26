@@ -30,6 +30,8 @@ readersignal --version --json
 readersignal doctor --json
 ```
 
+The [Kennel registry](https://kennel.kujolang.ai/readersignal) also distributes official releases. The same runtime requirements apply to registry installations.
+
 ## Quick start
 
 ```bash

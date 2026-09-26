@@ -45,16 +45,20 @@ verification; the Kujo working tree is clean. Evidence:
 
 Latest Linux rerun: 36131941147 at `719d6f7`. Formatting, clippy, MSRV,
 VM/interpreter parity and minimal smoke all passed; the final broad release-gate
-job is running (job 108062996557). Its success is not yet claimed.
+job 108062996557 also completed successfully. The entire Linux workflow is green.
+ReaderSignal validation run 36133073639 at `9ae76c7` also completed successfully.
+Terminal GitHub API receipts are preserved in `evidence/durability/` as
+`linux-gate-completed.json` and `readersignal-ci-completed.json`.
 
-## Historical evidence constraint
+## Restoration scope clarified
 
-The repository contains backup schema and isolated recovery fixtures, but no
-operator-supplied damaged-state directory or trusted original backup. Existing
-checkpoint support cannot establish the provenance of an unspecified backup or
-reconstruct missing historical bytes. Real-data restoration requires those two
-paths (and original record plus creation event), or confirmation that no live
-legacy state needs restoration. No live data has been changed or fabricated.
+The user explicitly confirmed: “No live legacy restoration is needed.”
+The repository task was to implement and verify recovery/backup mechanisms;
+there is no existing damaged dataset to restore as part of this task. Requiring
+operator paths was an unnecessary completion condition and is withdrawn.
+The verified backup/restore commands remain available for future use. No live
+data was changed or fabricated, and no backup paths are required to close this
+work. Actual future restoration still requires trustworthy original evidence.
 
 ## Memory receipt
 
@@ -68,19 +72,23 @@ The same Strata handoff was advanced to revision 5 with the second reference fix
 and full Rust suite result; exact and conceptual retrieval passed. The terminal
 language-runner receipt supersedes its previously pending local-run status.
 
-## Required operator input
+## Completion
 
-Across three goal turns, the damaged-state and trusted-backup paths remain
-unspecified. No local live ReaderSignal state was identified in the repository.
-All currently identified code/documentation fixes are committed and the full local
-suites pass. Actual historical restoration cannot proceed until the operator
-supplies those paths or confirms there is no live legacy dataset to restore.
-The final Linux gate is independently running; resume by reading existing run
-36131941147 rather than restarting it, and inspect any terminal failure before
-claiming full CI completion. Goal completion is not claimed.
+All identified implementation, documentation and regression fixes are committed
+and pushed. Local full verification and both Linux workflows pass. The user
+clarification removes the only outstanding operator-input condition; no known
+required work remains. This supersedes the prior blocked handoff and pending-CI
+receipts, which are retained as historical evidence.
 
-Strata handoff `41a2b2ad-dff9-423a-9bab-af0a7d57c207`, revision 6, now records
-the passing language runner and exact resume job plus the missing operator input.
-Exact retrieval and conceptual search both passed. No duplicate note or SignalBox
-Capture/Signal was created. The local CI observer was stopped; the remote GitHub
-job was not canceled.
+The final documentation commit records this closure without changing executable
+source. Kujo implementation/documentation ending SHA is
+`719d6f7340bf179bcbd8b63b7eb551b51769d671`; ReaderSignal's tested SHA is
+`9ae76c7e68404d1e4e093bb4526e516519868d56`. Use `git log -1 --format=%H --
+docs/audits/durability-follow-up.md` to identify this closure commit.
+
+Final Strata receipt: merged the explicit no-restoration requirement and both
+successful CI results into existing Agent Notes handoff
+`41a2b2ad-dff9-423a-9bab-af0a7d57c207`, revision 7. This explicitly supersedes
+the prior blocked/pending status. Exact retrieval and conceptual search both
+returned the updated note. No duplicate note was created. SignalBox: no captures
+warranted.

@@ -16,7 +16,7 @@ carry verification receipts.
 | ID | Priority | Finding / evidence | Action | Status |
 |---|---|---|---|---|
 | RS-19 | P2 | File-content sync did not persist parent-directory publications | Added Kujo directory barrier and ordered ReaderSignal initialization/journal/record/history/cleanup barriers | Implemented |
-| RS-20 | P2 | Safe legacy reconstruction needed original exact evidence from a backup | Added bounded, no-clobber `backup` and journaled `restore` commands with read-only previews | Implemented; real-data restore needs a supplied checkpoint |
+| RS-20 | P2 | Safe legacy reconstruction needed original exact evidence from a backup | Added bounded, no-clobber `backup` and journaled `restore` commands with read-only previews | Implemented; no live restoration requested |
 | RS-21 | P2 | Failure after unlink could incorrectly claim intent was retained | Return unconfirmed durability with phase/intent-cleared receipt for barrier failures; document idempotent recovery after cleanup | Implemented |
 
 Files: `src/storage.kujo` implements ordered barriers and evidence operations;
@@ -106,10 +106,10 @@ trusted offline backup can first be inspected with `recovery-status`, then used
 as the source of `backup` when the pair is complete. Incomplete backups are
 rejected; missing evidence is never synthesized.
 
-No damaged-state or trusted-backup path was supplied during implementation.
-The commands were verified on isolated fixtures, not on undisclosed live data.
-Actual historical restoration remains dependent on locating real original
-backup evidence; software cannot recover information that no longer exists.
+The user confirmed that no live legacy restoration is needed. The commands were
+verified on isolated fixtures; no live data restoration is part of this task.
+A future restoration would require trusted original evidence, but this is not
+an outstanding repository-hardening blocker.
 
 ## Compatibility, efficiency and security
 
@@ -147,8 +147,7 @@ Native evidence is committed in Kujo `docs/audits/directory-durability.md`.
 
 - No known unfinished implementation for the requested repository durability and
   backup/restore mechanisms; no known introduced regression.
-- Real-data restore requires user-supplied damaged-state/trusted-backup paths and
-  original evidence. Never infer a backup's trust from its hash alone.
+- No live legacy restoration is required, as explicitly confirmed by the user.
 - Physical power-cut validation on a particular deployment's storage, if required,
   is an operational certification task. The implementation is sync-contract
   based, not a claim to survive hardware violating that contract.

@@ -1,0 +1,35 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "resultType": "complete",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"kind\": \"project\",\n  \"slug\": \"readersignal\",\n  \"title\": \"ReaderSignal\",\n  \"description\": \"A local-first measurement ledger for privacy-bounded audience snapshots, feedback, comparisons, and evidence-linked learning.\",\n  \"category\": \"Tooling\",\n  \"tags\": [\n    \"Tool\",\n    \"Publishing\"\n  ],\n  \"install_command\": \"git clone --branch v0.3.0 https://github.com/kujolang/readersignal.git\",\n  \"github_url\": \"https://github.com/kujolang/readersignal\",\n  \"website_url\": \"https://kujolang.ai/ecosystem/readersignal/\",\n  \"scope_note\": \"ReaderSignal 0.3.0 requires POSIX Kujo 1.5.0 at d501c2c46c51718ee10c4434f6cf9750bbd81453 or a compatible newer build; 1.5.0 alone does not identify the preview filesystem APIs. Provider access, identity, consent, interpretation, and consequential decisions remain external responsibilities.\",\n  \"version\": \"0.3.0\",\n  \"last_updated\": \"2026-09-26\",\n  \"latest_release_url\": \"https://github.com/kujolang/readersignal/releases/tag/v0.3.0\",\n  \"release_status\": \"Version identifies the latest published GitHub Release. Unpinned clone commands select default-branch source; see scope_note for release boundaries.\",\n  \"source_path\": \"content/ecosystem/52-readersignal.md\",\n  \"provenance\": \"Reviewed committed Kujolang.ai content\"\n}"
+      }
+    ],
+    "structuredContent": {
+      "kind": "project",
+      "slug": "readersignal",
+      "title": "ReaderSignal",
+      "description": "A local-first measurement ledger for privacy-bounded audience snapshots, feedback, comparisons, and evidence-linked learning.",
+      "category": "Tooling",
+      "tags": [
+        "Tool",
+        "Publishing"
+      ],
+      "install_command": "git clone --branch v0.3.0 https://github.com/kujolang/readersignal.git",
+      "github_url": "https://github.com/kujolang/readersignal",
+      "website_url": "https://kujolang.ai/ecosystem/readersignal/",
+      "scope_note": "ReaderSignal 0.3.0 requires POSIX Kujo 1.5.0 at d501c2c46c51718ee10c4434f6cf9750bbd81453 or a compatible newer build; 1.5.0 alone does not identify the preview filesystem APIs. Provider access, identity, consent, interpretation, and consequential decisions remain external responsibilities.",
+      "version": "0.3.0",
+      "last_updated": "2026-09-26",
+      "latest_release_url": "https://github.com/kujolang/readersignal/releases/tag/v0.3.0",
+      "release_status": "Version identifies the latest published GitHub Release. Unpinned clone commands select default-branch source; see scope_note for release boundaries.",
+      "source_path": "content/ecosystem/52-readersignal.md",
+      "provenance": "Reviewed committed Kujolang.ai content"
+    },
+    "isError": false
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "checked_at": "2026-09-26T04:26:39.060705+00:00",
+  "checks": [
+    {
+      "url": "https://docs.kujolang.ai/tools/readersignal/",
+      "required_text": [
+        "v0.3.0",
+        "d501c2c46c51718ee10c4434f6cf9750bbd81453"
+      ],
+      "passed": true
+    },
+    {
+      "url": "https://docs.kujolang.ai/ecosystem/releases/",
+      "required_text": [
+        "readersignal/releases/tag/v0.3.0"
+      ],
+      "passed": true
+    },
+    {
+      "url": "https://docs.kujolang.ai/ecosystem/tooling/",
+      "required_text": [
+        "ReaderSignal</a> \u2014 privacy-bounded measurement, crash recovery, bounded query pages, and exact-evidence checkpoints (0.3.0)."
+      ],
+      "passed": true
+    },
+    {
+      "url": "https://kujolang.ai/ecosystem/readersignal/",
+      "required_text": [
+        "https://github.com/kujolang/readersignal/releases/tag/v0.3.0",
+        "git clone --branch v0.3.0 https://github.com/kujolang/readersignal.git",
+        "d501c2c46c51718ee10c4434f6cf9750bbd81453",
+        "https://docs.kujolang.ai/tools/readersignal/"
+      ],
+      "passed": true
+    }
+  ]
+}

@@ -25,7 +25,7 @@ Hardening contracts add identifier-free aggregate adapter conformance, policy-ve
   `next_cursor`; success concerns that completed page, not earlier pages.
   `doctor` returns `inspection_incomplete` rather than a whole-state health claim
   when its page is truncated. Neither command reconstructs missing evidence.
-- Record schema accepts existing 0.1.0 and current 0.2.0 records under contract
+- Record schema accepts existing 0.1.0/0.2.0 and current 0.3.0 records under contract
   1.0.0. Audit evidence must match either version. Calendar-invalid timestamps,
   nonfinite/overflowed metrics, malformed snapshots, and nested direct identifiers
   are invalid inputs rather than supported compatibility behavior.

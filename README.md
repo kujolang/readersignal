@@ -1,11 +1,13 @@
 # ReaderSignal
 
-[![Version](https://img.shields.io/badge/version-0.2.0-black)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.3.0-black)](VERSION)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 [![CI](https://github.com/kujolang/readersignal/actions/workflows/validate.yml/badge.svg)](https://github.com/kujolang/readersignal/actions/workflows/validate.yml)
 
 ReaderSignal is a local-first Kujo tool for privacy-bounded measurement snapshots, feedback, comparisons, and evidence-linked learning. It has no required hosted service, database server, model key, or sibling-tool dependency.
+
+Latest release: [v0.3.0](https://github.com/kujolang/readersignal/releases/tag/v0.3.0). See the [changelog](CHANGELOG.md) for upgrade details. Existing 0.1.0 and 0.2.0 records remain readable; stop older writers and run `init` before using an existing state directory with this release.
 
 ## Production capabilities
 
@@ -20,7 +22,7 @@ Requires POSIX Kujo 1.5.0 with locking, bounded paging and `sync_directory_benea
 build. Version 1.5.0 alone does not identify these preview APIs.
 
 ```bash
-git clone https://github.com/kujolang/readersignal.git
+git clone --branch v0.3.0 https://github.com/kujolang/readersignal.git
 cd readersignal
 export KUJO_BIN=/absolute/path/to/kujo
 export PATH="$PWD/bin:$PATH"
